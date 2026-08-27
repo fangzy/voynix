@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+
+# Environment
+.env
+.env.local
+.env.deploy
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+# Backups
+*.orig
+
+# Build
+dist/
+build/
+
+# Logs
+*.log
+
+# Serverless Devs
+.s/access/
+
+# Generated configs
+client-config/clash-verge*.yaml
+client-config/*.mmdb
+client-config/*.dat
+
+# Secrets
+secrets/
+certs/
+*.pem
+*.key
+
+# Test
+coverage/
+
+# Harness (Oh My Pi)
+.omo/
