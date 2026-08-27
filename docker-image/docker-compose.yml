@@ -1,0 +1,13 @@
+services:
+  voynix-xray:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APK_MIRROR: mirrors.aliyun.com
+    ports:
+      - "8089:8089"
+    environment:
+      - UUID=${UUID}
+      - GRPC_SERVICE_NAME=${GRPC_SERVICE_NAME:-ProxyService}
+    restart: unless-stopped
