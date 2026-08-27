@@ -19,6 +19,12 @@
         "network": "grpc",
         "grpcSettings": {
           "serviceName": "${GRPC_SERVICE_NAME}"
+        },
+        "sockopt": {
+          "tcpFastOpen": true,
+          "tcpNoDelay": true,
+          "tcpKeepAliveIdle": 30,
+          "tcpKeepAliveInterval": 30
         }
       }
     }

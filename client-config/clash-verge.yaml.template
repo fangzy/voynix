@@ -5,9 +5,11 @@ log-level: warning
 external-controller: 127.0.0.1:9090
 keep-alive-interval: 30
 tcp-concurrent: true
+tcp-fast-open: true
 unified-delay: true
 find-process-mode: off
 geodata-mode: true
+global-client-fingerprint: chrome
 profile:
   store-selected: true
   store-fake-ip: true
@@ -28,6 +30,21 @@ dns:
   proxy-server-nameserver:
     - 223.5.5.5
     - 119.29.29.29
+  respect-rules: true
+
+# fake-ip 模式下嗅探真实域名,保证 GEOIP/规则命中准确(DIRECT 直连判断不再依赖 fake-ip)
+sniffer:
+  enable: true
+  force-dns-mapping: true
+  parse-pure-ip: true
+  sniff:
+    HTTP:
+      ports: [80, 8080-8880]
+      override-destination: true
+    TLS:
+      ports: [443, 8443]
+    QUIC:
+      ports: [443]
 
 proxies:
 # BEGIN_PROXIES
@@ -38,6 +55,24 @@ proxies:
 
 rules:
   - AND,((NETWORK,udp),(DST-PORT,443)),REJECT
+  # ---- 系统打点/遥测/推送直连,不走 proxy(降低成本)----
+  - DOMAIN,wpad,DIRECT
+  - DOMAIN-SUFFIX,msftconnecttest.com,DIRECT
+  - DOMAIN-SUFFIX,msftncsi.com,DIRECT
+  - DOMAIN-SUFFIX,events.data.microsoft.com,DIRECT
+  - DOMAIN-SUFFIX,wns.windows.com,DIRECT
+  - DOMAIN-SUFFIX,delivery.mp.microsoft.com,DIRECT
+  - DOMAIN-SUFFIX,windowsupdate.com,DIRECT
+  - DOMAIN-SUFFIX,update.microsoft.com,DIRECT
+  - DOMAIN-SUFFIX,gateway.icloud.com,DIRECT
+  - DOMAIN-SUFFIX,push.apple.com,DIRECT
+  - DOMAIN-SUFFIX,gs-loc.apple.com,DIRECT
+  - DOMAIN-SUFFIX,mesu.apple.com,DIRECT
+  - DOMAIN-SUFFIX,ocsp.apple.com,DIRECT
+  - DOMAIN-SUFFIX,digicert.com,DIRECT
+  - DOMAIN-SUFFIX,geotrust.com,DIRECT
+  - DOMAIN-SUFFIX,comodoca.com,DIRECT
+  - DOMAIN-SUFFIX,globalsign.com,DIRECT
   - DOMAIN-SUFFIX,youtube.com,Streaming
   - DOMAIN-SUFFIX,googlevideo.com,Streaming
   - DOMAIN-SUFFIX,netflix.com,Streaming
