@@ -1,0 +1,96 @@
+mixed-port: 7890
+allow-lan: false
+mode: rule
+log-level: warning
+external-controller: 127.0.0.1:9090
+keep-alive-interval: 30
+tcp-concurrent: true
+unified-delay: true
+find-process-mode: off
+geodata-mode: true
+profile:
+  store-selected: true
+  store-fake-ip: true
+
+dns:
+  enable: true
+  listen: 0.0.0.0:1053
+  ipv6: false
+  enhanced-mode: fake-ip
+  fake-ip-range: 198.18.0.1/16
+  fake-ip-filter:
+    - '*.lan'
+    - localhost.ptlogin2.qq.com
+  nameserver:
+    - 223.5.5.5
+    - https://doh.pub/dns-query
+    - https://dns.alidns.com/dns-query
+  proxy-server-nameserver:
+    - 223.5.5.5
+    - 119.29.29.29
+
+proxies:
+  # 香港节点(FC cn-hongkong,Docker Hub 镜像)
+  - name: "Voynix-HK"
+    type: vless
+    server: ${HK_HOST}
+    port: ${HK_PORT}
+    uuid: ${UUID}
+    network: grpc
+    tls: true
+    udp: true
+    skip-cert-verify: true
+    servername: ${HK_HOST}
+    client-fingerprint: chrome
+    grpc-opts:
+      grpc-service-name: ${GRPC_SERVICE_NAME}
+
+  # 新加坡节点(FC ap-southeast-1,ACR 镜像)
+  - name: "Voynix-SG"
+    type: vless
+    server: ${SG_HOST}
+    port: ${SG_PORT}
+    uuid: ${UUID}
+    network: grpc
+    tls: true
+    udp: true
+    skip-cert-verify: true
+    servername: ${SG_HOST}
+    client-fingerprint: chrome
+    grpc-opts:
+      grpc-service-name: ${GRPC_SERVICE_NAME}
+
+proxy-groups:
+  # 自动选优:按延迟(每 300s 测速)在 HK/SG 间切换
+  - name: "Voynix-Auto"
+    type: url-test
+    url: 'http://www.gstatic.com/generate_204'
+    interval: 300
+    tolerance: 50
+    proxies:
+      - Voynix-HK
+      - Voynix-SG
+
+  - name: "Proxy"
+    type: select
+    proxies:
+      - Voynix-Auto
+      - DIRECT
+
+  - name: "Streaming"
+    type: select
+    proxies:
+      - Voynix-Auto
+      - Proxy
+
+rules:
+  - AND,((NETWORK,udp),(DST-PORT,443)),REJECT
+  - DOMAIN-SUFFIX,youtube.com,Streaming
+  - DOMAIN-SUFFIX,googlevideo.com,Streaming
+  - DOMAIN-SUFFIX,netflix.com,Streaming
+  - DOMAIN-SUFFIX,google.com,Proxy
+  - DOMAIN-SUFFIX,github.com,Proxy
+  - DOMAIN-SUFFIX,bilibili.com,DIRECT
+  - DOMAIN-SUFFIX,baidu.com,DIRECT
+  - GEOIP,CN,DIRECT
+  - MATCH,Proxy
