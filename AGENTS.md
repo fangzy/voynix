@@ -6,7 +6,7 @@
 
 ## OVERVIEW
 
-Xray-core Docker proxy service using VLESS + gRPC + TLS. Single container deployment; local Docker for dev, Alibaba Cloud FC 3.0 (custom-container) for production in two regions (Hong Kong + Singapore). Images built via GitHub Actions and pushed to Docker Hub (public, shared by both nodes).
+Xray-core Docker proxy service using VLESS + gRPC + TLS. Single container deployment; local Docker for dev, Alibaba Cloud FC 3.0 (custom-container) for production across 20 regions (11 overseas + 9 CN). Images built via GitHub Actions and pushed to Docker Hub (public, shared by all nodes).
 
 ## STRUCTURE
 
@@ -22,7 +22,7 @@ Xray-core Docker proxy service using VLESS + gRPC + TLS. Single container deploy
 ├── client-config/         # Clash client templates
 │   └── clash-verge.yaml.template   # Dual-node (HK+SG) + url-test auto-switch
 ├── fc/
-│   └── s.yaml             # Serverless Devs dual-region FC config
+│   └── s.yaml             # Serverless Devs multi-region FC config
 ├── scripts/
 │   ├── gen-client-config.sh   # Generate dual-node client config
 │   └── deploy-fc.sh           # Local FC deploy script (build/push/deploy)
@@ -60,7 +60,7 @@ Runtime vars live in `docker-image/.env`; deploy credentials in repo-root `.env.
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `UUID` | Yes | (none) | VLESS client authentication UUID (shared by both nodes) |
+| `UUID` | Yes | (none) | VLESS client authentication UUID (shared by all nodes) |
 | `GRPC_SERVICE_NAME` | No | `ProxyService` | gRPC service name for VLESS transport |
 
 Deploy credentials (`.env.deploy`, mirror each to a GitHub Secret for CI):
@@ -117,7 +117,7 @@ mihomo -t -f client-config/clash-verge.yaml
 
 # Local FC deploy (build+push+deploy; or deploy-only / single region)
 cp .env.deploy.example .env.deploy   # fill in credentials
-./scripts/deploy-fc.sh               # both regions
+./scripts/deploy-fc.sh               # all nodes
 ./scripts/deploy-fc.sh build hk      # HK only
 ./scripts/deploy-fc.sh deploy sg     # deploy-only SG
 
@@ -132,8 +132,8 @@ docker compose -f docker-image/docker-compose.yml ps
 **GitHub Actions:**
 - Workflow: `.github/workflows/deploy.yml`
 - Trigger: Push to `docker-image/**`, `fc/**`, `.github/workflows/deploy.yml` paths
-- Job 1 `build-and-push`: Builds Xray image, pushes to Docker Hub (public, both nodes share it)
-- Job 2 `deploy-fc`: Serverless Devs `s deploy -y` from `fc/` (both regions)
+- Job 1 `build-and-push`: Builds Xray image, pushes to Docker Hub (public, shared by all nodes)
+- Job 2 `deploy-fc`: Serverless Devs `s deploy -y` from `fc/` (nodes per FC_NODES matrix)
 - Docker Hub secrets: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`
 - FC deploy secrets: `ALIBABA_CLOUD_ACCOUNT_ID`, `ALIBABA_CLOUD_ACCESS_KEY_ID`, `ALIBABA_CLOUD_ACCESS_KEY_SECRET`, `UUID`
 
@@ -158,21 +158,41 @@ Single hop per node. No chain forwarding, no intermediate nodes.
 
 ## NODES
 
-| Node | Region | Function | Image source | Client host (fcapp.run:8089) |
-|------|--------|----------|--------------|------------------------------|
-| 香港 | cn-hongkong | `voynix-xray-hk` | Docker Hub public `docker.io/<user>/voynix-xray` | `voynix-xray-hk-*.cn-hongkong.fcapp.run` |
-| 新加坡 | ap-southeast-1 | `voynix-xray-sg` | Docker Hub public `docker.io/<user>/voynix-xray` | `voynix-xray-sg-*.ap-southeast-1.fcapp.run` |
+All nodes use Docker Hub public image `docker.io/<user>/voynix-xray`; deployment scope is controlled by the `FC_NODES` repo variable (comma-separated, e.g. `sg,hk,seoul`). Empty/空白/未设置 → CI 显式报错; unknown keys also fail fast. `fc/s.yaml` defines 20 nodes (11 overseas + 9 CN, YAML anchor `&node-base` for shared props).
 
-Note: old SG function (`proxy_service$xray-exit`, ACR image) was deleted 2026-08 and replaced by `voynix-xray-sg` (Docker Hub image, same spec as HK).
+| Key | Region | Function | Client host (fcapp.run:8089) |
+|-----|--------|----------|------------------------------|
+| `sg` | ap-southeast-1 | `voynix-xray-sg` | `voynix-xray-sg-*.ap-southeast-1.fcapp.run` |
+| `hk` | cn-hongkong | `voynix-xray-hk` | `voynix-xray-hk-*.cn-hongkong.fcapp.run` |
+| `seoul` | ap-northeast-2 | `voynix-xray-seoul` | `voynix-xray-seoul-*.ap-northeast-2.fcapp.run` |
+| `tokyo` | ap-northeast-1 | `voynix-xray-tokyo` | `voynix-xray-tokyo-*.ap-northeast-1.fcapp.run` |
+| `kl` | ap-southeast-3 | `voynix-xray-kl` | `voynix-xray-kl-*.ap-southeast-3.fcapp.run` |
+| `jakarta` | ap-southeast-5 | `voynix-xray-jakarta` | `voynix-xray-jakarta-*.ap-southeast-5.fcapp.run` |
+| `bangkok` | ap-southeast-7 | `voynix-xray-bangkok` | `voynix-xray-bangkok-*.ap-southeast-7.fcapp.run` |
+| `frankfurt` | eu-central-1 | `voynix-xray-frankfurt` | `voynix-xray-frankfurt-*.eu-central-1.fcapp.run` |
+| `london` | eu-west-1 | `voynix-xray-london` | `voynix-xray-london-*.eu-west-1.fcapp.run` |
+| `va` | us-east-1 | `voynix-xray-va` | `voynix-xray-va-*.us-east-1.fcapp.run` |
+| `sv` | us-west-1 | `voynix-xray-sv` | `voynix-xray-sv-*.us-west-1.fcapp.run` |
+| `hangzhou` | cn-hangzhou | `voynix-xray-hangzhou` | `voynix-xray-hangzhou-*.cn-hangzhou.fcapp.run` |
+| `shanghai` | cn-shanghai | `voynix-xray-shanghai` | `voynix-xray-shanghai-*.cn-shanghai.fcapp.run` |
+| `qingdao` | cn-qingdao | `voynix-xray-qingdao` | `voynix-xray-qingdao-*.cn-qingdao.fcapp.run` |
+| `beijing` | cn-beijing | `voynix-xray-beijing` | `voynix-xray-beijing-*.cn-beijing.fcapp.run` |
+| `zhangjiakou` | cn-zhangjiakou | `voynix-xray-zhangjiakou` | `voynix-xray-zhangjiakou-*.cn-zhangjiakou.fcapp.run` |
+| `huhehaote` | cn-huhehaote | `voynix-xray-huhehaote` | `voynix-xray-huhehaote-*.cn-huhehaote.fcapp.run` |
+| `wulanchabu` | cn-wulanchabu | `voynix-xray-wulanchabu` | `voynix-xray-wulanchabu-*.cn-wulanchabu.fcapp.run` |
+| `shenzhen` | cn-shenzhen | `voynix-xray-shenzhen` | `voynix-xray-shenzhen-*.cn-shenzhen.fcapp.run` |
+| `chengdu` | cn-chengdu | `voynix-xray-chengdu` | `voynix-xray-chengdu-*.cn-chengdu.fcapp.run` |
+
+Note: CN nodes (cn-*) defined 2026-08 per request; deploying proxy on CN regions carries compliance risk — user's decision. Old SG function (`proxy_service$xray-exit`, ACR image) was deleted 2026-08 and replaced by `voynix-xray-sg` (Docker Hub image, same spec as HK).
 
 ## NOTES
 
 - FC gateway terminates TLS; no container-side certs (inbound plain gRPC)
 - Client must set `skip-cert-verify: true`
 - FC client port is **8089** (gRPC entry, ALPN h2); 443 does not work for gRPC
-- FC function spec (2026-08): 0.1 vCPU / 128MB / `instanceConcurrency` 20 / `minInstances` 0 / `reservedConcurrency` 15. Console "弹性实例配额" column maps to `reservedConcurrency` (CONCURRENCY, not instance count); real instance-count cap (`targetInstances`) is unset → elastic. 100-concurrency load test: 3 active instances, no 429 (gRPC long-connection reuse keeps FC-side concurrent requests under the cap). Session affinity (any type) was tried 2026-08 and reverted: FC forces `instanceConcurrency` to 200 and the 4 affinity types (Cookie/HeaderField/MCP SSE/MCP Streamable) are all useless for VLESS+gRPC (mihomo/Xray gRPC transport doesn't process cookies or custom headers; gRPC long connections already have connection-level affinity)
+- FC function spec (2026-08): 0.1 vCPU / 128MB / `instanceConcurrency` 30 / `minInstances` 0 / `reservedConcurrency` 15. Console "弹性实例配额" column maps to `reservedConcurrency` (CONCURRENCY, not instance count); real instance-count cap (`targetInstances`) is unset → elastic. 100-concurrency load test: 3 active instances, no 429 (gRPC long-connection reuse keeps FC-side concurrent requests under the cap). Session affinity (any type) was tried 2026-08 and reverted: FC forces `instanceConcurrency` to 200 and the 4 affinity types (Cookie/HeaderField/MCP SSE/MCP Streamable) are all useless for VLESS+gRPC (mihomo/Xray gRPC transport doesn't process cookies or custom headers; gRPC long connections already have connection-level affinity)
 - Never verify FC nodes with plain `curl` (HTTP/1.1 → 502 `Process exited unexpectedly` is expected for gRPC-only); use mihomo client and `curl -x http://127.0.0.1:7890 https://www.google.com` (204 = OK)
-- Both FC nodes use the same Docker Hub public image `docker.io/<user>/voynix-xray` (no secrets in image; runtime vars injected via env). ACR no longer used (personal edition: one instance per account was the original blocker, now moot)
+- Both FC nodes use the same Docker Hub public image `docker.io/<user>/voynix-xray` (no secrets in image; runtime vars injected via env). ACR no longer used (personal edition: one instance per account was the original blocker, now moot). Deployment scope: GitHub Actions `deploy-fc` job uses a matrix driven by the `FC_NODES` repo variable (comma-separated node keys, e.g. `sg,hk,seoul`); unset/empty FC_NODES or unknown keys make the workflow fail fast with a clear message (placeholder `__none__` in matrix)
 - Local `docker push` to Docker Hub fails with EOF/broken pipe: Docker Desktop auto-detects system proxy (WPAD hijacked by Clash fake-ip) and configures dead proxy :3128; workaround is `crane push` (direct, reuses docker login creds)
 - No nginx. FC gateway terminates TLS; Xray inbound is plain gRPC (no TLS)
 - No test suite. Infrastructure project

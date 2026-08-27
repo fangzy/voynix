@@ -2,10 +2,12 @@
 # Voynix Xray FC 部署脚本(本地调试)
 #
 # 用法:
-#   ./scripts/deploy-fc.sh                  # 构建镜像 → 推送 → 部署新加坡+香港
+#   ./scripts/deploy-fc.sh                  # 构建镜像 → 推送 → 部署全部节点(新加坡+香港+首尔+东京)
 #   ./scripts/deploy-fc.sh build hk         # 构建推送后仅部署香港
 #   ./scripts/deploy-fc.sh deploy           # 跳过构建推送,仅部署(镜像已存在)
 #   ./scripts/deploy-fc.sh deploy sg        # 仅部署新加坡
+#   ./scripts/deploy-fc.sh deploy seoul     # 仅部署首尔
+#   ./scripts/deploy-fc.sh deploy tokyo     # 仅部署东京
 #
 # 依赖:
 #   - docker(Docker Desktop,Apple Silicon 亦可)、node/npm(首次自动装 Serverless Devs)
@@ -13,7 +15,7 @@
 #   - .env.deploy(部署凭据:Docker Hub/阿里云,模板见 .env.deploy.example)
 # 注意:
 #   - Docker Hub 仓库必须是 Public,FC 拉取无需凭据
-#   - 双节点(新加坡+香港)均用 Docker Hub 公共镜像
+#   - 各节点(新加坡/香港/首尔/东京)均用 Docker Hub 公共镜像
 set -e
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -21,7 +23,7 @@ FC_DIR="${REPO_DIR}/fc"
 IMAGE_NAME="voynix-xray"
 
 MODE="${1:-build}"    # build(默认) | deploy
-TARGET="${2:-both}"   # both | sg | hk
+TARGET="${2:-both}"   # both(全部)| sg | hk | seoul | tokyo
 
 # ---------- 读取本地 env(运行时变量 + 部署凭据分开存放) ----------
 RUNTIME_ENV="${REPO_DIR}/docker-image/.env"    # UUID / GRPC_SERVICE_NAME
@@ -49,7 +51,7 @@ fail() { echo "错误: $1"; exit 1; }
 [ -n "$ALIBABA_CLOUD_ACCOUNT_ID" ] || fail "ALIBABA_CLOUD_ACCOUNT_ID 未设置($DEPLOY_ENV)"
 [ -n "$ALIBABA_CLOUD_ACCESS_KEY_ID" ] || fail "ALIBABA_CLOUD_ACCESS_KEY_ID 未设置($DEPLOY_ENV)"
 [ -n "$ALIBABA_CLOUD_ACCESS_KEY_SECRET" ] || fail "ALIBABA_CLOUD_ACCESS_KEY_SECRET 未设置($DEPLOY_ENV)"
-[ -n "$DOCKERHUB_USERNAME" ] || fail "DOCKERHUB_USERNAME 未设置($DEPLOY_ENV,双节点镜像仓库 owner)"
+[ -n "$DOCKERHUB_USERNAME" ] || fail "DOCKERHUB_USERNAME 未设置($DEPLOY_ENV,各节点镜像仓库 owner)"
 
 # s.yaml 中的 ${env(...)} 需要这些变量
 export UUID GRPC_SERVICE_NAME
@@ -90,10 +92,12 @@ fi
 # ---------- 部署 FC ----------
 cd "$FC_DIR"
 case "$TARGET" in
-  both) echo "[deploy-fc] 部署 新加坡 + 香港..."; s deploy -y ;;
-  sg)   echo "[deploy-fc] 部署 新加坡...";        s voynix-sg deploy -y ;;
-  hk)   echo "[deploy-fc] 部署 香港...";          s voynix-hk deploy -y ;;
-  *)    fail "未知目标 '$TARGET'(可选: both|sg|hk)" ;;
+  both)  echo "[deploy-fc] 部署 全部节点(新加坡+香港+首尔+东京)..."; s deploy -y ;;
+  sg)    echo "[deploy-fc] 部署 新加坡..."; s voynix-sg deploy -y ;;
+  hk)    echo "[deploy-fc] 部署 香港...";   s voynix-hk deploy -y ;;
+  seoul) echo "[deploy-fc] 部署 首尔...";   s voynix-seoul deploy -y ;;
+  tokyo) echo "[deploy-fc] 部署 东京...";   s voynix-tokyo deploy -y ;;
+  *)     fail "未知目标 '$TARGET'(可选: both|sg|hk|seoul|tokyo)" ;;
 esac
 
 echo "[deploy-fc] 完成 ✔ 请到 FC 控制台确认函数状态"

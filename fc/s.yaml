@@ -1,13 +1,18 @@
-# Serverless Devs 配置 — Voynix Xray 双地域部署 (FC 3.0 自定义容器)
+# Serverless Devs 配置 — Voynix Xray 多地域部署 (FC 3.0 自定义容器)
 #
 # 部署用法(需先 export 下方环境变量):
-#   cd fc && s deploy -y            # 部署新加坡 + 香港
+#   cd fc && s deploy -y            # 部署全部已定义节点(注意:会部署到所有地域)
 #   cd fc && s voynix-hk deploy -y  # 仅部署香港
+#   cd fc && s voynix-tokyo deploy -y  # 仅部署东京
+#
+# 部署哪些节点由 GitHub Actions 的 FC_NODES 变量控制(逗号分隔,如 sg,hk,seoul):
+#   GitHub → Settings → Variables → FC_NODES = sg,hk,seoul
+#   未设置 FC_NODES(或为空)时 CI 显式报错;未知节点键同样报错
 #
 # 依赖环境变量:
 #   UUID                  VLESS 客户端 UUID(必填,须与客户端配置一致)
 #   GRPC_SERVICE_NAME     默认 ProxyService
-#   DOCKERHUB_USERNAME    Docker Hub 用户名(双节点镜像仓库 owner)
+#   DOCKERHUB_USERNAME    Docker Hub 用户名(各节点镜像仓库 owner)
 #
 # 密钥(access: default)由 CI 的 setup-s 或本地 `s config add` 配置
 edition: 3.0.0
@@ -15,71 +20,215 @@ name: voynix
 access: "default"
 
 vars:
-  region_sg: ap-southeast-1   # 新加坡 FC
-  region_hk: cn-hongkong      # 香港 FC
+  region_sg: ap-southeast-1    # 新加坡
+  region_hk: cn-hongkong       # 香港
+  region_seoul: ap-northeast-2 # 首尔
+  region_tokyo: ap-northeast-1 # 东京
+  region_kl: ap-southeast-3    # 吉隆坡
+  region_jakarta: ap-southeast-5 # 雅加达
+  region_bangkok: ap-southeast-7 # 曼谷
+  region_frankfurt: eu-central-1 # 法兰克福
+  region_london: eu-west-1     # 伦敦
+  region_va: us-east-1         # 弗吉尼亚
+  region_sv: us-west-1         # 硅谷
+  # 国内地域(代理服务部署国内节点有合规风险,请自行评估;FC 部分地域需单独开通)
+  region_hangzhou: cn-hangzhou
+  region_shanghai: cn-shanghai
+  region_qingdao: cn-qingdao
+  region_beijing: cn-beijing
+  region_zhangjiakou: cn-zhangjiakou
+  region_huhehaote: cn-huhehaote
+  region_wulanchabu: cn-wulanchabu
+  region_shenzhen: cn-shenzhen
+  region_chengdu: cn-chengdu
+
+# 公共 props(YAML 锚点,各节点通过 props: <<: 深层合并,仅覆盖地域/函数名/描述)
+x-node: &node-base
+  runtime: custom-container
+  timeout: 3600
+  memorySize: 128
+  cpu: 0.1
+  diskSize: 512
+  instanceConcurrency: 30
+  internetAccess: true
+  logConfig: auto
+  scalingConfig:
+    minInstances: 0
+  concurrencyConfig:
+    reservedConcurrency: 15
+  customContainerConfig:
+    image: 'docker.io/${env(DOCKERHUB_USERNAME)}/voynix-xray:latest'
+    port: 8089
+  environmentVariables:
+    UUID: ${env(UUID)}
+    GRPC_SERVICE_NAME: ${env(GRPC_SERVICE_NAME)}
+  triggers:
+    - triggerName: httpTrigger
+      triggerType: http
+      qualifier: LATEST
+      triggerConfig:
+        authType: anonymous
+        disableURLInternet: false
+        methods: [GET, POST]
 
 resources:
   voynix-sg:
     component: fc3
     props:
+      <<: *node-base
       region: ${vars.region_sg}
       functionName: voynix-xray-sg
       description: 'Voynix Xray proxy (Singapore) - Docker Hub public image'
-      runtime: custom-container
-      timeout: 3600
-      memorySize: 128
-      cpu: 0.1
-      diskSize: 512
-      instanceConcurrency: 20
-      internetAccess: true
-      scalingConfig:
-        minInstances: 0
-      concurrencyConfig:
-        reservedConcurrency: 15
-      customContainerConfig:
-        image: 'docker.io/${env(DOCKERHUB_USERNAME)}/voynix-xray:latest'
-        port: 8089
-      environmentVariables:
-        UUID: ${env(UUID)}
-        GRPC_SERVICE_NAME: ${env(GRPC_SERVICE_NAME)}
-      triggers:
-        - triggerName: httpTrigger
-          triggerType: http
-          qualifier: LATEST
-          triggerConfig:
-            authType: anonymous
-            disableURLInternet: false
-            methods: [GET, POST]
 
   voynix-hk:
     component: fc3
     props:
+      <<: *node-base
       region: ${vars.region_hk}
       functionName: voynix-xray-hk
       description: 'Voynix Xray proxy (Hong Kong) - Docker Hub public image'
-      runtime: custom-container
-      timeout: 3600
-      memorySize: 128
-      cpu: 0.1
-      diskSize: 512
-      instanceConcurrency: 20
-      internetAccess: true
-      logConfig: auto
-      scalingConfig:
-        minInstances: 0
-      concurrencyConfig:
-        reservedConcurrency: 15
-      customContainerConfig:
-        image: 'docker.io/${env(DOCKERHUB_USERNAME)}/voynix-xray:latest'
-        port: 8089
-      environmentVariables:
-        UUID: ${env(UUID)}
-        GRPC_SERVICE_NAME: ${env(GRPC_SERVICE_NAME)}
-      triggers:
-        - triggerName: httpTrigger
-          triggerType: http
-          qualifier: LATEST
-          triggerConfig:
-            authType: anonymous
-            disableURLInternet: false
-            methods: [GET, POST]
+
+  voynix-seoul:
+    component: fc3
+    props:
+      <<: *node-base
+      region: ${vars.region_seoul}
+      functionName: voynix-xray-seoul
+      description: 'Voynix Xray proxy (Seoul) - Docker Hub public image'
+
+  voynix-tokyo:
+    component: fc3
+    props:
+      <<: *node-base
+      region: ${vars.region_tokyo}
+      functionName: voynix-xray-tokyo
+      description: 'Voynix Xray proxy (Tokyo) - Docker Hub public image'
+
+  voynix-kl:
+    component: fc3
+    props:
+      <<: *node-base
+      region: ${vars.region_kl}
+      functionName: voynix-xray-kl
+      description: 'Voynix Xray proxy (Kuala Lumpur) - Docker Hub public image'
+
+  voynix-jakarta:
+    component: fc3
+    props:
+      <<: *node-base
+      region: ${vars.region_jakarta}
+      functionName: voynix-xray-jakarta
+      description: 'Voynix Xray proxy (Jakarta) - Docker Hub public image'
+
+  voynix-bangkok:
+    component: fc3
+    props:
+      <<: *node-base
+      region: ${vars.region_bangkok}
+      functionName: voynix-xray-bangkok
+      description: 'Voynix Xray proxy (Bangkok) - Docker Hub public image'
+
+  voynix-frankfurt:
+    component: fc3
+    props:
+      <<: *node-base
+      region: ${vars.region_frankfurt}
+      functionName: voynix-xray-frankfurt
+      description: 'Voynix Xray proxy (Frankfurt) - Docker Hub public image'
+
+  voynix-london:
+    component: fc3
+    props:
+      <<: *node-base
+      region: ${vars.region_london}
+      functionName: voynix-xray-london
+      description: 'Voynix Xray proxy (London) - Docker Hub public image'
+
+  voynix-va:
+    component: fc3
+    props:
+      <<: *node-base
+      region: ${vars.region_va}
+      functionName: voynix-xray-va
+      description: 'Voynix Xray proxy (US Virginia) - Docker Hub public image'
+
+  voynix-sv:
+    component: fc3
+    props:
+      <<: *node-base
+      region: ${vars.region_sv}
+      functionName: voynix-xray-sv
+      description: 'Voynix Xray proxy (US Silicon Valley) - Docker Hub public image'
+
+  # ---- 国内地域(代理服务部署国内节点有合规风险,请自行评估) ----
+  voynix-hangzhou:
+    component: fc3
+    props:
+      <<: *node-base
+      region: ${vars.region_hangzhou}
+      functionName: voynix-xray-hangzhou
+      description: 'Voynix Xray proxy (Hangzhou) - Docker Hub public image'
+
+  voynix-shanghai:
+    component: fc3
+    props:
+      <<: *node-base
+      region: ${vars.region_shanghai}
+      functionName: voynix-xray-shanghai
+      description: 'Voynix Xray proxy (Shanghai) - Docker Hub public image'
+
+  voynix-qingdao:
+    component: fc3
+    props:
+      <<: *node-base
+      region: ${vars.region_qingdao}
+      functionName: voynix-xray-qingdao
+      description: 'Voynix Xray proxy (Qingdao) - Docker Hub public image'
+
+  voynix-beijing:
+    component: fc3
+    props:
+      <<: *node-base
+      region: ${vars.region_beijing}
+      functionName: voynix-xray-beijing
+      description: 'Voynix Xray proxy (Beijing) - Docker Hub public image'
+
+  voynix-zhangjiakou:
+    component: fc3
+    props:
+      <<: *node-base
+      region: ${vars.region_zhangjiakou}
+      functionName: voynix-xray-zhangjiakou
+      description: 'Voynix Xray proxy (Zhangjiakou) - Docker Hub public image'
+
+  voynix-huhehaote:
+    component: fc3
+    props:
+      <<: *node-base
+      region: ${vars.region_huhehaote}
+      functionName: voynix-xray-huhehaote
+      description: 'Voynix Xray proxy (Hohhot) - Docker Hub public image'
+
+  voynix-wulanchabu:
+    component: fc3
+    props:
+      <<: *node-base
+      region: ${vars.region_wulanchabu}
+      functionName: voynix-xray-wulanchabu
+      description: 'Voynix Xray proxy (Ulanqab) - Docker Hub public image'
+
+  voynix-shenzhen:
+    component: fc3
+    props:
+      <<: *node-base
+      region: ${vars.region_shenzhen}
+      functionName: voynix-xray-shenzhen
+      description: 'Voynix Xray proxy (Shenzhen) - Docker Hub public image'
+
+  voynix-chengdu:
+    component: fc3
+    props:
+      <<: *node-base
+      region: ${vars.region_chengdu}
+      functionName: voynix-xray-chengdu
+      description: 'Voynix Xray proxy (Chengdu) - Docker Hub public image'

@@ -1,6 +1,6 @@
 # Voynix
 
-基于 Xray-core 的独立 Docker 代理服务，使用 VLESS + gRPC + TLS 协议。单容器部署，支持本地 Docker 与阿里云函数计算 (FC) 双地域部署（香港 + 新加坡）。
+基于 Xray-core 的独立 Docker 代理服务，使用 VLESS + gRPC + TLS 协议。单容器部署，支持本地 Docker 与阿里云函数计算 (FC) 多地域部署（海外 11 地域，默认香港 + 新加坡）。
 
 ## 架构概览
 
@@ -25,24 +25,26 @@
             Internet
 ```
 
-### FC 双地域部署(生产)
+### FC 多地域部署(生产)
 
 ```
 Client (mihomo/Clash)
     │
     │ VLESS + gRPC + TLS (fcapp.run:8089, ALPN h2)
-    ├──────────────────────┬──────────────────────┐
-    ↓                      ↓                      ↓
-香港 FC (cn-hongkong)   新加坡 FC (ap-southeast-1)
-Docker Hub 公共镜像      Docker Hub 公共镜像
-voynix-xray-hk          voynix-xray-sg
-    │                      │
-    │ Direct               │ Direct
-    ↓                      ↓
-Internet               Internet
+    ├──────────────┬──────────────┬──────────────┬───────────┬────────── ...
+    ↓              ↓              ↓              ↓
+ 香港 FC         新加坡 FC       东京 FC         首尔 FC     其他 7 个地域
+cn-hongkong    ap-southeast-1  ap-northeast-1  ap-northeast-2  (见节点清单)
+voynix-xray-hk voynix-xray-sg  voynix-xray-tokyo voynix-xray-seoul
+    │              │              │              │
+    │ Direct       │ Direct       │ Direct       │ Direct
+    ↓              ↓              ↓              ↓
+Internet       Internet       Internet       Internet
 
 客户端自动切换:Voynix-Auto (url-test) 按延迟选优
 ```
+
+> 部署哪些地域由 GitHub Actions 的 **`FC_NODES` 变量**控制(逗号分隔,任意子集,如 `sg,hk,seoul`),`fc/s.yaml` 只维护可用节点清单。**未设置或为空时 workflow 显式报错**,未知节点键同样报错。
 
 > FC 网关终止 TLS，Xray inbound 为明文 gRPC（无 `security:tls`），客户端连 FC 域名的 **8089** 端口（FC gRPC 入口，支持 HTTP/2 ALPN h2），`skip-cert-verify: true`。
 
@@ -58,7 +60,7 @@ Internet               Internet
 - ✅ **健康检查**: 内置 Docker HEALTHCHECK
 - ✅ **自动构建**: GitHub Actions CI/CD，推送至 Docker Hub，Serverless Devs 自动部署 FC
 - ✅ **私有 IP 过滤**: 路由规则屏蔽 geoip:private
-- ✅ **FC 双地域**: 香港 (cn-hongkong) + 新加坡 (ap-southeast-1) 节点
+- ✅ **FC 多地域**: 11 个海外 + 9 个国内地域节点(FC_NODES 配置部署范围)
 - ✅ **客户端自动切换**: url-test 按延迟自动选优 (Voynix-Auto)
 
 ## 目录结构
@@ -73,11 +75,11 @@ voynix/
 │   ├── docker-compose.yml            # Compose 配置
 │   └── .env.example                  # 运行时环境变量示例 (UUID/GRPC_SERVICE_NAME)
 ├── client-config/
-│   └── clash-verge.yaml.template     # 客户端配置模板(双节点 + url-test)
+│   └── clash-verge.yaml.template     # 客户端配置模板(多节点 + url-test)
 ├── fc/
-│   └── s.yaml                        # Serverless Devs 双地域 FC 部署配置
+│   └── s.yaml                        # Serverless Devs 多地域 FC 部署配置
 ├── scripts/
-│   ├── gen-client-config.sh          # 生成双节点客户端配置
+│   ├── gen-client-config.sh          # 生成多节点客户端配置
 │   └── deploy-fc.sh                  # 本地 FC 部署脚本(构建/推送/部署)
 ├── .env.deploy.example               # 部署凭据示例 (Docker Hub/阿里云, 已被 gitignore)
 ├── .github/workflows/
@@ -138,39 +140,80 @@ curl -k https://localhost:8089
 
 ## FC 部署(新加坡 + 香港)
 
-通过阿里云函数计算 (FC 3.0, 自定义容器) 双地域部署:
+通过阿里云函数计算 (FC 3.0, 自定义容器) 多地域部署:
 
 | 文件 | 说明 |
 |------|------|
-| `fc/s.yaml` | Serverless Devs 配置:新加坡 (ap-southeast-1) + 香港 (cn-hongkong),均用 Docker Hub 公共镜像 |
-| `scripts/deploy-fc.sh` | 本地调试脚本:构建镜像 → 推送 → 部署,支持单地域 (`build|deploy` + `both|sg|hk`) |
-| `.github/workflows/deploy.yml` | CI:构建推送镜像 + Serverless Devs 自动部署 |
+| `fc/s.yaml` | Serverless Devs 配置:20 个节点(11 海外 + 9 国内,锚点复用公共配置),均用 Docker Hub 公共镜像 |
+| `scripts/deploy-fc.sh` | 本地调试脚本:构建镜像 → 推送 → 部署,支持单节点 (`build\|deploy` + `both\|sg\|hk\|seoul\|tokyo`) |
+| `.github/workflows/deploy.yml` | CI:构建推送镜像 + Serverless Devs 按 `FC_NODES` 变量批量部署 |
 
 本地调试(先本地验证,成功后再依赖 CI):
 
 ```bash
 cp docker-image/.env.example docker-image/.env   # 填入 UUID(运行时变量)
 cp .env.deploy.example .env.deploy               # 填入 Docker Hub / 阿里云凭据(部署专用,已被 gitignore)
-./scripts/deploy-fc.sh                            # 构建+推送+部署 双地域
+./scripts/deploy-fc.sh                            # 构建+推送+部署 全部节点
 ./scripts/deploy-fc.sh build hk                   # 仅香港
 ./scripts/deploy-fc.sh deploy sg                  # 跳过构建,仅部署新加坡
+./scripts/deploy-fc.sh deploy tokyo               # 仅部署东京
 ```
 
 环境变量分文件存放:运行时变量(`UUID`/`GRPC_SERVICE_NAME`)在 `docker-image/.env`,部署凭据(Docker Hub/阿里云)在仓库根 `.env.deploy`。
 
+### CI 批量部署(FC_NODES 配置项)
+
+GitHub Actions 的 `deploy-fc` job 按 **`FC_NODES` 仓库变量**(逗号分隔)批量部署:
+
+```text
+# 只部署 2 个节点:
+GitHub → Settings → Secrets and variables → Actions → Variables
+FC_NODES = sg,hk
+
+# 部署任意子集(如亚洲 4 地域):
+FC_NODES = sg,hk,seoul,tokyo
+
+# 未设置 FC_NODES 时 workflow 会显式报错(防止误以为已部署)
+```
+
+可用节点键与地域:
+
+海外:`sg`(新加坡)/`hk`(香港)/`seoul`(首尔)/`tokyo`(东京)/`kl`(吉隆坡)/`jakarta`(雅加达)/`bangkok`(曼谷)/`frankfurt`(法兰克福)/`london`(伦敦)/`va`(弗吉尼亚)/`sv`(硅谷)
+
+国内:`hangzhou`(杭州)/`shanghai`(上海)/`qingdao`(青岛)/`beijing`(北京)/`zhangjiakou`(张家口)/`huhehaote`(呼和浩特)/`wulanchabu`(乌兰察布)/`shenzhen`(深圳)/`chengdu`(成都)
+
 注意事项:
-- 双节点 FC 均使用 Docker Hub 公共镜像拉取(`docker.io/<user>/voynix-xray`),仓库必须设为 **Public**(镜像内不含 UUID 等机密,运行时经环境变量注入)
+- 各节点 FC 均使用 Docker Hub 公共镜像拉取(`docker.io/<user>/voynix-xray`),仓库必须设为 **Public**(镜像内不含 UUID 等机密,运行时经环境变量注入)
+- 国内地域节点已定义于 `fc/s.yaml`,但**代理服务部署国内节点有合规风险,请自行评估**;部分国内地域需向阿里云单独申请开通
 
 ### 实测经验(2026-08)
 
-**节点信息:**
+**节点信息**(20 个节点:11 海外 + 9 国内,已实测新加坡/香港,其余由 FC_NODES 部署后生效):
 
-| 节点 | 地域 | 函数名 | 镜像源 | 客户端地址 |
-|------|------|--------|--------|-----------|
-| 新加坡 | ap-southeast-1 | `voynix-xray-sg` | Docker Hub 公共镜像 | `voynix-xray-sg-xxx.ap-southeast-1.fcapp.run:8089` |
-| 香港 | cn-hongkong | `voynix-xray-hk` | Docker Hub 公共镜像 | `voynix-xray-hk-xxx.cn-hongkong.fcapp.run:8089` |
+| 节点键 | 地域 | 函数名 | 镜像源 | 客户端地址 |
+|--------|------|--------|--------|-----------|
+| `sg` | ap-southeast-1 | `voynix-xray-sg` | Docker Hub 公共镜像 | `voynix-xray-sg-xxx.ap-southeast-1.fcapp.run:8089` |
+| `hk` | cn-hongkong | `voynix-xray-hk` | Docker Hub 公共镜像 | `voynix-xray-hk-xxx.cn-hongkong.fcapp.run:8089` |
+| `seoul` | ap-northeast-2 | `voynix-xray-seoul` | Docker Hub 公共镜像 | `voynix-xray-seoul-xxx.ap-northeast-2.fcapp.run:8089` |
+| `tokyo` | ap-northeast-1 | `voynix-xray-tokyo` | Docker Hub 公共镜像 | `voynix-xray-tokyo-xxx.ap-northeast-1.fcapp.run:8089` |
+| `kl` | ap-southeast-3 | `voynix-xray-kl` | Docker Hub 公共镜像 | `voynix-xray-kl-xxx.ap-southeast-3.fcapp.run:8089` |
+| `jakarta` | ap-southeast-5 | `voynix-xray-jakarta` | Docker Hub 公共镜像 | `voynix-xray-jakarta-xxx.ap-southeast-5.fcapp.run:8089` |
+| `bangkok` | ap-southeast-7 | `voynix-xray-bangkok` | Docker Hub 公共镜像 | `voynix-xray-bangkok-xxx.ap-southeast-7.fcapp.run:8089` |
+| `frankfurt` | eu-central-1 | `voynix-xray-frankfurt` | Docker Hub 公共镜像 | `voynix-xray-frankfurt-xxx.eu-central-1.fcapp.run:8089` |
+| `london` | eu-west-1 | `voynix-xray-london` | Docker Hub 公共镜像 | `voynix-xray-london-xxx.eu-west-1.fcapp.run:8089` |
+| `va` | us-east-1 | `voynix-xray-va` | Docker Hub 公共镜像 | `voynix-xray-va-xxx.us-east-1.fcapp.run:8089` |
+| `sv` | us-west-1 | `voynix-xray-sv` | Docker Hub 公共镜像 | `voynix-xray-sv-xxx.us-west-1.fcapp.run:8089` |
+| `hangzhou` | cn-hangzhou | `voynix-xray-hangzhou` | Docker Hub 公共镜像 | `voynix-xray-hangzhou-xxx.cn-hangzhou.fcapp.run:8089` |
+| `shanghai` | cn-shanghai | `voynix-xray-shanghai` | Docker Hub 公共镜像 | `voynix-xray-shanghai-xxx.cn-shanghai.fcapp.run:8089` |
+| `qingdao` | cn-qingdao | `voynix-xray-qingdao` | Docker Hub 公共镜像 | `voynix-xray-qingdao-xxx.cn-qingdao.fcapp.run:8089` |
+| `beijing` | cn-beijing | `voynix-xray-beijing` | Docker Hub 公共镜像 | `voynix-xray-beijing-xxx.cn-beijing.fcapp.run:8089` |
+| `zhangjiakou` | cn-zhangjiakou | `voynix-xray-zhangjiakou` | Docker Hub 公共镜像 | `voynix-xray-zhangjiakou-xxx.cn-zhangjiakou.fcapp.run:8089` |
+| `huhehaote` | cn-huhehaote | `voynix-xray-huhehaote` | Docker Hub 公共镜像 | `voynix-xray-huhehaote-xxx.cn-huhehaote.fcapp.run:8089` |
+| `wulanchabu` | cn-wulanchabu | `voynix-xray-wulanchabu` | Docker Hub 公共镜像 | `voynix-xray-wulanchabu-xxx.cn-wulanchabu.fcapp.run:8089` |
+| `shenzhen` | cn-shenzhen | `voynix-xray-shenzhen` | Docker Hub 公共镜像 | `voynix-xray-shenzhen-xxx.cn-shenzhen.fcapp.run:8089` |
+| `chengdu` | cn-chengdu | `voynix-xray-chengdu` | Docker Hub 公共镜像 | `voynix-xray-chengdu-xxx.cn-chengdu.fcapp.run:8089` |
 
-> 双节点均使用 Docker Hub 公共镜像 `docker.io/<user>/voynix-xray`(镜像内不含 UUID 等机密,运行时经环境变量注入)。旧新加坡函数 `proxy_service$xray-exit`(ACR 镜像)已于 2026-08 删除,由 `voynix-xray-sg` 接管。
+> 各节点均使用 Docker Hub 公共镜像 `docker.io/<user>/voynix-xray`(镜像内不含 UUID 等机密,运行时经环境变量注入)。旧新加坡函数 `proxy_service$xray-exit`(ACR 镜像)已于 2026-08 删除,由 `voynix-xray-sg` 接管。
 
 **镜像推送(Docker Hub)**:本机 `docker push` 会被 Docker Desktop 自动检测出的死代理(3128)拦截,报 `EOF`/`broken pipe`。绕行方案:用 `crane`(go-containerregistry)直连推送,复用 `docker login` 凭据:
 
@@ -183,12 +226,12 @@ crane push /tmp/voynix.tar docker.io/<user>/voynix-xray:latest
 
 **验证方式**:不要用 `curl` 测 FC 节点——curl 发的是 HTTP/1.1 请求,VLESS+gRPC 只接受 HTTP/2,会返回 502(`Process exited unexpectedly`)造成误判。用真实 mihomo 客户端验证:`mihomo -f client-config/clash-verge.yaml` 后 `curl -x http://127.0.0.1:7890 https://www.google.com` 返回 204 即为通。
 
-**函数规格与弹性配置(2026-08 实测)**:`fc/s.yaml` 两个节点统一:
+**函数规格与弹性配置(2026-08 实测)**:`fc/s.yaml` 所有节点统一(锚点复用):
 
 | 配置项 | 值 | 字段 |
 |--------|-----|------|
 | CPU / 内存 | 0.1 vCPU / 128MB | `cpu` / `memorySize` |
-| 单实例并发 | 20 | `instanceConcurrency` |
+| 单实例并发 | 30 | `instanceConcurrency` |
 | 最小实例数 | 0(无请求不收费) | `scalingConfig.minInstances` |
 | 预留并发 | 15 | `concurrencyConfig.reservedConcurrency` |
 
@@ -196,9 +239,9 @@ crane push /tmp/voynix.tar docker.io/<user>/voynix-xray:latest
 
 ## 客户端配置
 
-### 生成配置文件(双节点 + 自动切换)
+### 生成配置文件(多节点 + 自动切换)
 
-使用 `gen-client-config.sh` 生成包含香港 + 新加坡两个节点的客户端配置，通过 `Voynix-Auto` (url-test) 组按延迟自动选优：
+使用 `gen-client-config.sh` 生成包含香港 + 新加坡两个节点的客户端配置,通过 `Voynix-Auto` (url-test) 组按延迟自动选优(如需加入更多 FC 节点,在模板中添加对应 server 即可):
 
 ```bash
 # 用法: ./gen-client-config.sh <hk_host> <sg_host> [hk_port] [sg_port]
@@ -251,7 +294,7 @@ curl http://127.0.0.1:9090/proxies/Voynix-Auto
 
 ## 容器镜像
 
-镜像存储在 Docker Hub(公共仓库,双节点共用):
+镜像存储在 Docker Hub(公共仓库,各节点共用):
 
 | 镜像 | 路径 |
 |------|------|
