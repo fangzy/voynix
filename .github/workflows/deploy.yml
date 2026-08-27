@@ -21,6 +21,20 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Check required secrets (build-and-push)
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          missing=""
+          [ -n "$DOCKERHUB_USERNAME" ] || missing="$missing DOCKERHUB_USERNAME"
+          [ -n "$DOCKERHUB_TOKEN" ] || missing="$missing DOCKERHUB_TOKEN"
+          if [ -n "$missing" ]; then
+            echo "❌ Missing secrets:$missing"
+            exit 1
+          fi
+          echo "✅ build-and-push secrets OK"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
@@ -54,6 +68,26 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+
+      - name: Check required secrets (deploy-fc)
+        env:
+          ALIBABA_CLOUD_ACCOUNT_ID: ${{ secrets.ALIBABA_CLOUD_ACCOUNT_ID }}
+          ALIBABA_CLOUD_ACCESS_KEY_ID: ${{ secrets.ALIBABA_CLOUD_ACCESS_KEY_ID }}
+          ALIBABA_CLOUD_ACCESS_KEY_SECRET: ${{ secrets.ALIBABA_CLOUD_ACCESS_KEY_SECRET }}
+          UUID: ${{ secrets.UUID }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          missing=""
+          [ -n "$ALIBABA_CLOUD_ACCOUNT_ID" ] || missing="$missing ALIBABA_CLOUD_ACCOUNT_ID"
+          [ -n "$ALIBABA_CLOUD_ACCESS_KEY_ID" ] || missing="$missing ALIBABA_CLOUD_ACCESS_KEY_ID"
+          [ -n "$ALIBABA_CLOUD_ACCESS_KEY_SECRET" ] || missing="$missing ALIBABA_CLOUD_ACCESS_KEY_SECRET"
+          [ -n "$UUID" ] || missing="$missing UUID"
+          [ -n "$DOCKERHUB_USERNAME" ] || missing="$missing DOCKERHUB_USERNAME"
+          if [ -n "$missing" ]; then
+            echo "❌ Missing secrets:$missing"
+            exit 1
+          fi
+          echo "✅ deploy-fc secrets OK"
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
