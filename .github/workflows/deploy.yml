@@ -77,13 +77,13 @@ jobs:
           if [ -z "${FC_NODES//[[:space:]]/}" ]; then
             echo "❌ FC_NODES 未设置或为空,未指定任何部署节点"
             echo "请配置: GitHub → Settings → Secrets and variables → Actions → Variables → FC_NODES"
-            echo "示例: FC_NODES = sg,hk,seoul"
+            echo "示例: FC_NODES = sg,hk,tokyo"
             exit 1
           fi
           # 逐个校验节点键(逗号分隔)
           for n in $(echo "$FC_NODES" | tr ',' ' '); do
             case "$n" in
-              sg|hk|seoul|tokyo|kl|jakarta|bangkok|frankfurt|london|va|sv|hangzhou|shanghai|qingdao|beijing|zhangjiakou|huhehaote|wulanchabu|shenzhen|chengdu) ;;
+              sg|hk|tokyo|frankfurt|va|sv|hangzhou|shanghai|beijing|zhangjiakou|huhehaote|shenzhen) ;;
               *) echo "❌ 未知节点: '$n'(FC_NODES 含无效节点键)"; exit 1 ;;
             esac
           done

@@ -2,11 +2,10 @@
 # Voynix Xray FC 部署脚本(本地调试)
 #
 # 用法:
-#   ./scripts/deploy-fc.sh                  # 构建镜像 → 推送 → 部署全部节点(新加坡+香港+首尔+东京)
+#   ./scripts/deploy-fc.sh                  # 构建镜像 → 推送 → 部署全部节点(6 海外 + 6 国内)
 #   ./scripts/deploy-fc.sh build hk         # 构建推送后仅部署香港
 #   ./scripts/deploy-fc.sh deploy           # 跳过构建推送,仅部署(镜像已存在)
 #   ./scripts/deploy-fc.sh deploy sg        # 仅部署新加坡
-#   ./scripts/deploy-fc.sh deploy seoul     # 仅部署首尔
 #   ./scripts/deploy-fc.sh deploy tokyo     # 仅部署东京
 #
 # 依赖:
@@ -23,7 +22,7 @@ FC_DIR="${REPO_DIR}/fc"
 IMAGE_NAME="voynix-xray"
 
 MODE="${1:-build}"    # build(默认) | deploy
-TARGET="${2:-both}"   # both(全部)| sg | hk | seoul | tokyo
+TARGET="${2:-both}"   # both(全部)| sg | hk | tokyo | frankfurt | va | sv | hangzhou | shanghai | beijing | zhangjiakou | huhehaote | shenzhen
 
 # ---------- 读取本地 env(运行时变量 + 部署凭据分开存放) ----------
 RUNTIME_ENV="${REPO_DIR}/docker-image/.env"    # UUID / GRPC_SERVICE_NAME
@@ -92,12 +91,20 @@ fi
 # ---------- 部署 FC ----------
 cd "$FC_DIR"
 case "$TARGET" in
-  both)  echo "[deploy-fc] 部署 全部节点(新加坡+香港+首尔+东京)..."; s deploy -y ;;
+  both)  echo "[deploy-fc] 部署 全部节点(6 海外 + 6 国内)..."; s deploy -y ;;
   sg)    echo "[deploy-fc] 部署 新加坡..."; s voynix-sg deploy -y ;;
   hk)    echo "[deploy-fc] 部署 香港...";   s voynix-hk deploy -y ;;
-  seoul) echo "[deploy-fc] 部署 首尔...";   s voynix-seoul deploy -y ;;
   tokyo) echo "[deploy-fc] 部署 东京...";   s voynix-tokyo deploy -y ;;
-  *)     fail "未知目标 '$TARGET'(可选: both|sg|hk|seoul|tokyo)" ;;
+  frankfurt) echo "[deploy-fc] 部署 法兰克福..."; s voynix-frankfurt deploy -y ;;
+  va)    echo "[deploy-fc] 部署 弗吉尼亚..."; s voynix-va deploy -y ;;
+  sv)    echo "[deploy-fc] 部署 硅谷...";   s voynix-sv deploy -y ;;
+  hangzhou) echo "[deploy-fc] 部署 杭州..."; s voynix-hangzhou deploy -y ;;
+  shanghai) echo "[deploy-fc] 部署 上海..."; s voynix-shanghai deploy -y ;;
+  beijing)  echo "[deploy-fc] 部署 北京..."; s voynix-beijing deploy -y ;;
+  zhangjiakou) echo "[deploy-fc] 部署 张家口..."; s voynix-zhangjiakou deploy -y ;;
+  huhehaote) echo "[deploy-fc] 部署 呼和浩特..."; s voynix-huhehaote deploy -y ;;
+  shenzhen) echo "[deploy-fc] 部署 深圳..."; s voynix-shenzhen deploy -y ;;
+  *)     fail "未知目标 '$TARGET'(可选: both|sg|hk|tokyo|frankfurt|va|sv|hangzhou|shanghai|beijing|zhangjiakou|huhehaote|shenzhen)" ;;
 esac
 
 echo "[deploy-fc] 完成 ✔ 请到 FC 控制台确认函数状态"
