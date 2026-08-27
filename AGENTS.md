@@ -133,7 +133,7 @@ docker compose -f docker-image/docker-compose.yml ps
 - Workflow: `.github/workflows/deploy.yml`
 - Trigger: Push to `docker-image/**`, `fc/**`, `.github/workflows/deploy.yml` paths
 - Job 1 `build-and-push`: Builds Xray image, pushes to Docker Hub (public, shared by all nodes)
-- Job 2 `deploy-fc`: Serverless Devs `s deploy -y` from `fc/` (nodes per FC_NODES matrix)
+- Job 2 `deploy-fc`: Serverless Devs `s deploy -y` from `fc/` (loops over nodes in FC_NODES)
 - Docker Hub secrets: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`
 - FC deploy secrets: `ALIBABA_CLOUD_ACCOUNT_ID`, `ALIBABA_CLOUD_ACCESS_KEY_ID`, `ALIBABA_CLOUD_ACCESS_KEY_SECRET`, `UUID`
 
@@ -192,7 +192,7 @@ Note: CN nodes (cn-*) defined 2026-08 per request; deploying proxy on CN regions
 - FC client port is **8089** (gRPC entry, ALPN h2); 443 does not work for gRPC
 - FC function spec (2026-08): 0.1 vCPU / 128MB / `instanceConcurrency` 30 / `minInstances` 0 / `reservedConcurrency` 15. Console "弹性实例配额" column maps to `reservedConcurrency` (CONCURRENCY, not instance count); real instance-count cap (`targetInstances`) is unset → elastic. 100-concurrency load test: 3 active instances, no 429 (gRPC long-connection reuse keeps FC-side concurrent requests under the cap). Session affinity (any type) was tried 2026-08 and reverted: FC forces `instanceConcurrency` to 200 and the 4 affinity types (Cookie/HeaderField/MCP SSE/MCP Streamable) are all useless for VLESS+gRPC (mihomo/Xray gRPC transport doesn't process cookies or custom headers; gRPC long connections already have connection-level affinity)
 - Never verify FC nodes with plain `curl` (HTTP/1.1 → 502 `Process exited unexpectedly` is expected for gRPC-only); use mihomo client and `curl -x http://127.0.0.1:7890 https://www.google.com` (204 = OK)
-- Both FC nodes use the same Docker Hub public image `docker.io/<user>/voynix-xray` (no secrets in image; runtime vars injected via env). ACR no longer used (personal edition: one instance per account was the original blocker, now moot). Deployment scope: GitHub Actions `deploy-fc` job uses a matrix driven by the `FC_NODES` repo variable (comma-separated node keys, e.g. `sg,hk,seoul`); unset/empty FC_NODES or unknown keys make the workflow fail fast with a clear message (placeholder `__none__` in matrix)
+- Both FC nodes use the same Docker Hub public image `docker.io/<user>/voynix-xray` (no secrets in image; runtime vars injected via env). ACR no longer used (personal edition: one instance per account was the original blocker, now moot). Deployment scope: GitHub Actions `deploy-fc` job loops over the `FC_NODES` repo variable (comma-separated node keys, e.g. `sg,hk,seoul`, split via bash `tr`); unset/empty/whitespace-only FC_NODES or unknown keys make the workflow fail fast with a clear message (GitHub Actions expressions have no `split` function, so deployment is a bash for-loop, not a matrix)
 - Local `docker push` to Docker Hub fails with EOF/broken pipe: Docker Desktop auto-detects system proxy (WPAD hijacked by Clash fake-ip) and configures dead proxy :3128; workaround is `crane push` (direct, reuses docker login creds)
 - No nginx. FC gateway terminates TLS; Xray inbound is plain gRPC (no TLS)
 - No test suite. Infrastructure project
