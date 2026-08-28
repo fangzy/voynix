@@ -52,6 +52,11 @@ GRPC_SERVICE_NAME="${GRPC_SERVICE_NAME:-ProxyService}"
 DEPLOY_ENV="${REPO_DIR}/.env.deploy"
 [ -f "$DEPLOY_ENV" ] && . "$DEPLOY_ENV"
 
+# ---------- 镜像名/函数名前缀(公开 fork 可改,默认 voynix-xray) ----------
+IMAGE_NAME="${IMAGE_NAME:-voynix-xray}"
+# 客户端显示名前缀:取 IMAGE_NAME 首段并首字母大写(voynix-xray → Voynix)
+CLIENT_PREFIX=$(echo "$IMAGE_NAME" | cut -d- -f1 | awk '{ print toupper(substr($0,1,1)) substr($0,2) }')
+
 # ---------- 确定要生成的节点 ----------
 # 优先级:命令行参数 > FC_NODES 环境变量 > 全部节点(s.yaml)
 # FC_NODES 与 CI 语义一致:逗号分隔节点键,如 sg,hk,tokyo;设置为空/纯空白 → 显式报错
@@ -98,6 +103,8 @@ print(f\"{d['vars'][region_var]}|{p['functionName']}\")
   }
   region="${meta%%|*}"
   fn="${meta#*|}"
+  # s.yaml 中 functionName 用 ${env(IMAGE_NAME)} 占位,解析为实际值
+  fn=$(echo "$fn" | sed "s|\${env(IMAGE_NAME)}|${IMAGE_NAME}|g")
 
   url="$("$ALIYUN" fc GetTrigger --region "$region" --functionName "$fn" --triggerName httpTrigger 2>/dev/null | python3 -c "
 import json, sys
@@ -134,7 +141,7 @@ for line in $NODE_LINES; do
   name=$(echo "$key" | awk '{ if (length($0) == 2) print toupper($0); else print toupper(substr($0,1,1)) substr($0,2) }')
   PROXIES="$PROXIES
   # $name 节点(FC,自动获取域名)
-  - name: \"Voynix-$name\"
+  - name: \"${CLIENT_PREFIX}-$name\"
     type: vless
     server: $host
     port: $PORT
@@ -156,14 +163,14 @@ for line in $NODE_LINES; do
   key=$(echo "$line" | cut -d'|' -f1)
   name=$(echo "$key" | awk '{ if (length($0) == 2) print toupper($0); else print toupper(substr($0,1,1)) substr($0,2) }')
   GROUP_MEMBERS="$GROUP_MEMBERS
-      - Voynix-$name"
+      - ${CLIENT_PREFIX}-$name"
 done
 
 # 注意:变量名不用 GROUPS(bash 中是只读数组,赋值会静默失败)
 GROUPS_TEXT="
 proxy-groups:
   # 自动选优:按延迟(每 300s 测速)在所有节点间切换
-  - name: \"Voynix-Auto\"
+  - name: \"${CLIENT_PREFIX}-Auto\"
     type: url-test
     url: 'http://www.gstatic.com/generate_204'
     interval: 300
@@ -173,13 +180,13 @@ proxy-groups:
   - name: \"Proxy\"
     type: select
     proxies:
-      - Voynix-Auto
+      - ${CLIENT_PREFIX}-Auto
       - DIRECT
 
   - name: \"Streaming\"
     type: select
     proxies:
-      - Voynix-Auto
+      - ${CLIENT_PREFIX}-Auto
       - Proxy
 "
 
@@ -204,6 +211,6 @@ echo "  节点数: $(echo "$NODE_LINES" | wc -l | tr -d ' ')"
 echo "  端口:   $PORT"
 echo "  UUID:   $UUID"
 echo "  GRPC_SERVICE_NAME: $GRPC_SERVICE_NAME"
-echo "  自动切换组: Voynix-Auto (url-test, 按延迟选优)"
+echo "  自动切换组: ${CLIENT_PREFIX}-Auto (url-test, 按延迟选优)"
 echo ""
 echo "校验: mihomo -t -f $OUTPUT"

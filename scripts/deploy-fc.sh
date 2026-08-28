@@ -21,7 +21,7 @@ set -e
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 FC_DIR="${REPO_DIR}/fc"
-IMAGE_NAME="voynix-xray"
+IMAGE_NAME="${IMAGE_NAME:-voynix-xray}"   # Docker Hub 镜像名/FC 函数名前缀(公开 fork 可改,如 myproxy)
 
 MODE="${1:-build}"    # build(默认) | deploy
 TARGET="${2:-}"       # 可选:both(全部)| 节点键;未指定时用 FC_NODES 环境变量,仍无则部署全部
@@ -55,7 +55,7 @@ fail() { echo "错误: $1"; exit 1; }
 [ -n "$DOCKERHUB_USERNAME" ] || fail "DOCKERHUB_USERNAME 未设置($DEPLOY_ENV,各节点镜像仓库 owner)"
 
 # s.yaml 中的 ${env(...)} 需要这些变量
-export UUID GRPC_SERVICE_NAME
+export UUID GRPC_SERVICE_NAME IMAGE_NAME
 export DOCKERHUB_USERNAME
 
 # ---------- 安装/检查 Serverless Devs ----------

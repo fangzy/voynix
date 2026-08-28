@@ -86,9 +86,8 @@ Internet       Internet       Internet       Internet
 - ✅ **一键部署**: `deploy-fc.sh` 构建 → 推送 → 部署,支持单节点或 `FC_NODES` 批量部署
 - ✅ **自动生成客户端配置**: `gen-client-config.sh` 自动抓取 FC 节点域名,无需手填
 - ✅ **轻量镜像**: Alpine 3.20 基础镜像，约 35MB
-- ✅ **安全运行**: 非 root 用户 (UID 1000) 运行 Xray 进程
+- ✅ **低成本**: FC 按量计费,minInstances 0 无请求不收费,0.1 vCPU/128MB 轻量规格,gRPC 长连接复用降低并发费用
 - ✅ **运行时配置**: envsubst 模板替换，改配置只需重启容器
-- ✅ **健康检查**: 内置 Docker HEALTHCHECK
 - ✅ **私有 IP 过滤**: 路由规则屏蔽 geoip:private
 - ✅ **FC 多地域**: 6 个海外 + 6 个国内地域节点
 - ✅ **客户端自动切换**: url-test 按延迟自动选优 (Voynix-Auto)
@@ -138,6 +137,7 @@ voynix/
 | `ALIBABA_CLOUD_ACCESS_KEY_SECRET` | 是 | 阿里云 AccessKey Secret |
 | `UUID` | 是 | VLESS 客户端认证 UUID(见「公共前置准备:UUID」) |
 | `GRPC_SERVICE_NAME` | 否 | 默认 `ProxyService`(不设置则用默认值) |
+| `IMAGE_NAME` | 否 | 默认 `voynix-xray`(Docker Hub 镜像名与 FC 函数名前缀,公开 fork 可改,需与本地 `.env.deploy` 一致) |
 
 **Variables**(在 **Variables** 页签添加):
 
@@ -352,6 +352,14 @@ docker pull <user>/voynix-xray:latest
 
 可写在 `.env.deploy` 或作为 shell 环境变量传入,作用于 `deploy-fc.sh`(部署范围)与 `gen-client-config.sh`(生成范围),与 CI 的 `FC_NODES` 仓库变量语义一致。
 
+### 镜像/函数名前缀(IMAGE_NAME)
+
+| 变量 | 必需 | 默认值 | 说明 |
+|------|------|--------|------|
+| `IMAGE_NAME` | 否 | `voynix-xray` | Docker Hub 镜像名与 FC 函数名前缀(如 `voynix-xray-sg`),客户端显示名派生自其首段(`Voynix-SG`) |
+
+公开 fork 后建议改成自己的名字(如 `IMAGE_NAME=myproxy`),本地 `.env.deploy` 与 GitHub Actions 的 `IMAGE_NAME` Secret 需保持一致;改后会同时影响镜像名、函数名与客户端配置名。
+
 ### 与 GitHub Actions 的对应
 
 | 本地文件 | GitHub Actions | 说明 |
@@ -360,6 +368,7 @@ docker pull <user>/voynix-xray:latest
 | `docker-image/.env` 的 `GRPC_SERVICE_NAME` | **Secrets.**`GRPC_SERVICE_NAME`(可选) | 不设置则用默认值 |
 | `.env.deploy` 的 5 个凭据 | **Secrets.** 同名 5 项 | 与本地文件一一对应 |
 | `FC_NODES` | **Variables.**`FC_NODES` | 部署范围控制 |
+| `IMAGE_NAME` | **Secrets.**`IMAGE_NAME`(可选) | 镜像/函数名前缀,默认 `voynix-xray` |
 
 完整配置步骤见「开箱即用:GitHub Actions 自动部署」。
 

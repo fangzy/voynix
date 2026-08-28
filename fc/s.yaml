@@ -55,7 +55,7 @@ x-node: &node-base
   concurrencyConfig:
     reservedConcurrency: 15
   customContainerConfig:
-    image: 'docker.io/${env(DOCKERHUB_USERNAME)}/voynix-xray:latest'
+    image: 'docker.io/${env(DOCKERHUB_USERNAME)}/${env(IMAGE_NAME)}:latest'
     port: 8089
   environmentVariables:
     UUID: ${env(UUID)}
@@ -75,7 +75,7 @@ resources:
     props:
       <<: *node-base
       region: ${vars.region_sg}
-      functionName: voynix-xray-sg
+      functionName: ${env(IMAGE_NAME)}-sg
       description: 'Voynix Xray proxy (Singapore) - Docker Hub public image'
 
   voynix-hk:
@@ -83,7 +83,7 @@ resources:
     props:
       <<: *node-base
       region: ${vars.region_hk}
-      functionName: voynix-xray-hk
+      functionName: ${env(IMAGE_NAME)}-hk
       description: 'Voynix Xray proxy (Hong Kong) - Docker Hub public image'
 
   voynix-tokyo:
@@ -91,7 +91,7 @@ resources:
     props:
       <<: *node-base
       region: ${vars.region_tokyo}
-      functionName: voynix-xray-tokyo
+      functionName: ${env(IMAGE_NAME)}-tokyo
       description: 'Voynix Xray proxy (Tokyo) - Docker Hub public image'
 
   voynix-frankfurt:
@@ -99,7 +99,7 @@ resources:
     props:
       <<: *node-base
       region: ${vars.region_frankfurt}
-      functionName: voynix-xray-frankfurt
+      functionName: ${env(IMAGE_NAME)}-frankfurt
       description: 'Voynix Xray proxy (Frankfurt) - Docker Hub public image'
 
   voynix-va:
@@ -107,7 +107,7 @@ resources:
     props:
       <<: *node-base
       region: ${vars.region_va}
-      functionName: voynix-xray-va
+      functionName: ${env(IMAGE_NAME)}-va
       description: 'Voynix Xray proxy (US Virginia) - Docker Hub public image'
 
   voynix-sv:
@@ -115,7 +115,7 @@ resources:
     props:
       <<: *node-base
       region: ${vars.region_sv}
-      functionName: voynix-xray-sv
+      functionName: ${env(IMAGE_NAME)}-sv
       description: 'Voynix Xray proxy (US Silicon Valley) - Docker Hub public image'
 
   # ---- 国内地域(代理服务部署国内节点有合规风险,请自行评估) ----
@@ -124,7 +124,7 @@ resources:
     props:
       <<: *node-base
       region: ${vars.region_hangzhou}
-      functionName: voynix-xray-hangzhou
+      functionName: ${env(IMAGE_NAME)}-hangzhou
       description: 'Voynix Xray proxy (Hangzhou) - Docker Hub public image'
 
   voynix-shanghai:
@@ -132,7 +132,7 @@ resources:
     props:
       <<: *node-base
       region: ${vars.region_shanghai}
-      functionName: voynix-xray-shanghai
+      functionName: ${env(IMAGE_NAME)}-shanghai
       description: 'Voynix Xray proxy (Shanghai) - Docker Hub public image'
 
   voynix-beijing:
@@ -140,7 +140,7 @@ resources:
     props:
       <<: *node-base
       region: ${vars.region_beijing}
-      functionName: voynix-xray-beijing
+      functionName: ${env(IMAGE_NAME)}-beijing
       description: 'Voynix Xray proxy (Beijing) - Docker Hub public image'
 
   voynix-zhangjiakou:
@@ -148,7 +148,7 @@ resources:
     props:
       <<: *node-base
       region: ${vars.region_zhangjiakou}
-      functionName: voynix-xray-zhangjiakou
+      functionName: ${env(IMAGE_NAME)}-zhangjiakou
       description: 'Voynix Xray proxy (Zhangjiakou) - Docker Hub public image'
 
   voynix-huhehaote:
@@ -156,7 +156,7 @@ resources:
     props:
       <<: *node-base
       region: ${vars.region_huhehaote}
-      functionName: voynix-xray-huhehaote
+      functionName: ${env(IMAGE_NAME)}-huhehaote
       description: 'Voynix Xray proxy (Hohhot) - Docker Hub public image'
 
   voynix-shenzhen:
@@ -164,5 +164,5 @@ resources:
     props:
       <<: *node-base
       region: ${vars.region_shenzhen}
-      functionName: voynix-xray-shenzhen
+      functionName: ${env(IMAGE_NAME)}-shenzhen
       description: 'Voynix Xray proxy (Shenzhen) - Docker Hub public image'

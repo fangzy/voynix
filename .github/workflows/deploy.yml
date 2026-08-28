@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 env:
-  IMAGE_NAME: voynix-xray
+  IMAGE_NAME: ${{ secrets.IMAGE_NAME || 'voynix-xray' }}
 
 jobs:
   build-and-push:
@@ -135,6 +135,7 @@ jobs:
           UUID: ${{ secrets.UUID }}
           GRPC_SERVICE_NAME: ${{ secrets.GRPC_SERVICE_NAME || 'ProxyService' }}
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          IMAGE_NAME: ${{ secrets.IMAGE_NAME || 'voynix-xray' }}
         run: |
           cd fc
           for n in $(echo "$FC_NODES" | tr ',' ' '); do
