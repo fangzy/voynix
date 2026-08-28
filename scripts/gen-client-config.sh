@@ -25,7 +25,7 @@ TEMPLATE="${REPO_DIR}/client-config/clash-verge.yaml.template"
 # 输出文件名:可用 OUT_FILE 环境变量覆盖(如 OUT_FILE=clash-verge-sg-tokyo.yaml 生成多份配置)
 OUT_FILE="${OUT_FILE:-clash-verge.yaml}"
 OUTPUT="${REPO_DIR}/client-config/${OUT_FILE}"
-PORT=8089  # FC gRPC 入口端口(所有节点一致)
+PORT=443  # FC WSS 入口端口(8089 是 gRPC h2 专用,WS 升级会 500)
 
 # ---------- 定位 aliyun CLI ----------
 if command -v aliyun >/dev/null 2>&1; then
@@ -48,6 +48,11 @@ if [ -z "$UUID" ] || [ "$UUID" = "your-uuid-here" ]; then
   exit 1
 fi
 GRPC_SERVICE_NAME="${GRPC_SERVICE_NAME:-ProxyService}"
+FC_BEARER_TOKEN="${FC_BEARER_TOKEN:-}"
+if [ -z "$FC_BEARER_TOKEN" ]; then
+  echo "错误: FC_BEARER_TOKEN 未设置($ENV_FILE,生产触发器已开启 Bearer 鉴权)"
+  exit 1
+fi
 
 # ---------- 可选:读取 .env.deploy 中的 FC_NODES(与 deploy-fc.sh 语义一致) ----------
 # 存在则 source,让 .env.deploy 里配置的 FC_NODES 同样作用于本脚本;
@@ -143,20 +148,22 @@ for line in $NODE_LINES; do
   # 节点名:两字母缩写(sg/hk/va/sv)全大写,多字母首字母大写
   name=$(echo "$key" | awk '{ if (length($0) == 2) print toupper($0); else print toupper(substr($0,1,1)) substr($0,2) }')
   PROXIES="$PROXIES
-  # $name 节点(FC,自动获取域名)
+  # $name 节点(FC,自动获取域名;VLESS+WS+WSS 443 + Bearer 鉴权)
   - name: \"${CLIENT_PREFIX}-$name\"
     type: vless
     server: $host
     port: $PORT
     uuid: $UUID
-    network: grpc
+    network: ws
     tls: true
     udp: true
     skip-cert-verify: true
     servername: $host
     client-fingerprint: chrome
-    grpc-opts:
-      grpc-service-name: $GRPC_SERVICE_NAME
+    ws-opts:
+      path: /ws
+      headers:
+        Authorization: Bearer $FC_BEARER_TOKEN
 "
 done
 
@@ -221,9 +228,9 @@ PYEOF
 echo ""
 echo "Generated: $OUTPUT"
 echo "  节点数: $(echo "$NODE_LINES" | wc -l | tr -d ' ')"
-echo "  端口:   $PORT"
+echo "  端口:   $PORT (WSS)"
 echo "  UUID:   $UUID"
-echo "  GRPC_SERVICE_NAME: $GRPC_SERVICE_NAME"
+echo "  传输:   WebSocket(path /ws)+ Bearer 鉴权"
 echo "  自动切换组: ${CLIENT_PREFIX}-Auto (url-test, 按延迟选优)"
 echo ""
 echo "校验: mihomo -t -f $OUTPUT"

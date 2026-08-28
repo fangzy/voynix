@@ -95,6 +95,7 @@ jobs:
           ALIBABA_CLOUD_ACCESS_KEY_ID: ${{ secrets.ALIBABA_CLOUD_ACCESS_KEY_ID }}
           ALIBABA_CLOUD_ACCESS_KEY_SECRET: ${{ secrets.ALIBABA_CLOUD_ACCESS_KEY_SECRET }}
           UUID: ${{ secrets.UUID }}
+          FC_BEARER_TOKEN: ${{ secrets.FC_BEARER_TOKEN }}
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
           missing=""
@@ -102,6 +103,7 @@ jobs:
           [ -n "$ALIBABA_CLOUD_ACCESS_KEY_ID" ] || missing="$missing ALIBABA_CLOUD_ACCESS_KEY_ID"
           [ -n "$ALIBABA_CLOUD_ACCESS_KEY_SECRET" ] || missing="$missing ALIBABA_CLOUD_ACCESS_KEY_SECRET"
           [ -n "$UUID" ] || missing="$missing UUID"
+          [ -n "$FC_BEARER_TOKEN" ] || missing="$missing FC_BEARER_TOKEN"
           [ -n "$DOCKERHUB_USERNAME" ] || missing="$missing DOCKERHUB_USERNAME"
           if [ -n "$missing" ]; then
             echo "❌ Missing secrets:$missing"
@@ -134,6 +136,8 @@ jobs:
           FC_NODES: ${{ vars.FC_NODES }}
           UUID: ${{ secrets.UUID }}
           GRPC_SERVICE_NAME: ${{ secrets.GRPC_SERVICE_NAME || 'ProxyService' }}
+          FC_BEARER_TOKEN: ${{ secrets.FC_BEARER_TOKEN }}
+          WS_PATH: ${{ secrets.WS_PATH || 'ws' }}
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           IMAGE_NAME: ${{ secrets.IMAGE_NAME || 'voynix-xray' }}
         run: |

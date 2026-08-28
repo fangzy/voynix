@@ -45,17 +45,20 @@ DEPLOY_ENV="${REPO_DIR}/.env.deploy"           # Docker Hub / 阿里云凭据
 
 UUID="${UUID:-}"
 GRPC_SERVICE_NAME="${GRPC_SERVICE_NAME:-ProxyService}"
+FC_BEARER_TOKEN="${FC_BEARER_TOKEN:-}"
+WS_PATH="${WS_PATH:-ws}"
 
 # ---------- 校验必需变量 ----------
 fail() { echo "错误: $1"; exit 1; }
 [ -n "$UUID" ] || fail "UUID 未设置($RUNTIME_ENV)"
+[ -n "$FC_BEARER_TOKEN" ] || fail "FC_BEARER_TOKEN 未设置($RUNTIME_ENV,生产触发器已开启 Bearer 鉴权)"
 [ -n "$ALIBABA_CLOUD_ACCOUNT_ID" ] || fail "ALIBABA_CLOUD_ACCOUNT_ID 未设置($DEPLOY_ENV)"
 [ -n "$ALIBABA_CLOUD_ACCESS_KEY_ID" ] || fail "ALIBABA_CLOUD_ACCESS_KEY_ID 未设置($DEPLOY_ENV)"
 [ -n "$ALIBABA_CLOUD_ACCESS_KEY_SECRET" ] || fail "ALIBABA_CLOUD_ACCESS_KEY_SECRET 未设置($DEPLOY_ENV)"
 [ -n "$DOCKERHUB_USERNAME" ] || fail "DOCKERHUB_USERNAME 未设置($DEPLOY_ENV,各节点镜像仓库 owner)"
 
 # s.yaml 中的 ${env(...)} 需要这些变量
-export UUID GRPC_SERVICE_NAME IMAGE_NAME
+export UUID GRPC_SERVICE_NAME IMAGE_NAME FC_BEARER_TOKEN WS_PATH
 export DOCKERHUB_USERNAME
 
 # ---------- 安装/检查 Serverless Devs ----------

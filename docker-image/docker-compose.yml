@@ -10,4 +10,6 @@ services:
     environment:
       - UUID=${UUID}
       - GRPC_SERVICE_NAME=${GRPC_SERVICE_NAME:-ProxyService}
+      - TRANSPORT=${TRANSPORT:-ws}   # ws(默认,生产) | grpc(回退)
+      - WS_PATH=${WS_PATH:-ws}
     restart: unless-stopped

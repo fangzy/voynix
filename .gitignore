@@ -41,4 +41,6 @@ certs/
 coverage/
 
 # Harness (Oh My Pi)
-.omo/
+.omo/.atomcode
+
+.atomcode
