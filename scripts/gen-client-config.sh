@@ -4,6 +4,7 @@
 # 用法:
 #   ./scripts/gen-client-config.sh                  # 自动获取 s.yaml 中全部已部署节点
 #   ./scripts/gen-client-config.sh sg hk tokyo      # 仅指定节点(逗号/空格分隔均可)
+#   OUT_FILE=clash-verge-sg-tokyo.yaml ./scripts/gen-client-config.sh sg tokyo  # 自定义输出文件名(生成多份配置)
 #
 # 依赖:
 #   - docker-image/.env(UUID/GRPC_SERVICE_NAME)
@@ -21,7 +22,9 @@ REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 ENV_FILE="${REPO_DIR}/docker-image/.env"
 S_YAML="${REPO_DIR}/fc/s.yaml"
 TEMPLATE="${REPO_DIR}/client-config/clash-verge.yaml.template"
-OUTPUT="${REPO_DIR}/client-config/clash-verge.yaml"
+# 输出文件名:可用 OUT_FILE 环境变量覆盖(如 OUT_FILE=clash-verge-sg-tokyo.yaml 生成多份配置)
+OUT_FILE="${OUT_FILE:-clash-verge.yaml}"
+OUTPUT="${REPO_DIR}/client-config/${OUT_FILE}"
 PORT=8089  # FC gRPC 入口端口(所有节点一致)
 
 # ---------- 定位 aliyun CLI ----------
@@ -169,7 +172,7 @@ done
 # 注意:变量名不用 GROUPS(bash 中是只读数组,赋值会静默失败)
 GROUPS_TEXT="
 proxy-groups:
-  # 自动选优:按延迟(每 300s 测速)在所有节点间切换
+  # 时间优先:按延迟(每 300s 测速)选最优节点
   - name: \"${CLIENT_PREFIX}-Auto\"
     type: url-test
     url: 'https://github.com/manifest.json'
@@ -177,10 +180,20 @@ proxy-groups:
     tolerance: 50
     proxies:$GROUP_MEMBERS
 
+  # 负载均衡:连接轮询分发到所有节点
+  - name: \"${CLIENT_PREFIX}-LB\"
+    type: load-balance
+    strategy: round-robin
+    url: 'https://github.com/manifest.json'
+    interval: 300
+    proxies:$GROUP_MEMBERS
+
+  # 切换开关:时间优先(Auto) 或 负载均衡(LB)
   - name: \"Proxy\"
     type: select
     proxies:
       - ${CLIENT_PREFIX}-Auto
+      - ${CLIENT_PREFIX}-LB
       - DIRECT
 
   - name: \"Streaming\"
