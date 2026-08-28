@@ -7,6 +7,7 @@
 #
 # 依赖:
 #   - docker-image/.env(UUID/GRPC_SERVICE_NAME)
+#   - .env.deploy(可选,FC_NODES 部署范围;不存在则仅用环境变量)
 #   - aliyun CLI(默认 aliyun,找不到则用 /private/tmp/aliyun)
 #   - python3(解析 s.yaml 与 FC API 输出)
 #
@@ -44,6 +45,12 @@ if [ -z "$UUID" ] || [ "$UUID" = "your-uuid-here" ]; then
   exit 1
 fi
 GRPC_SERVICE_NAME="${GRPC_SERVICE_NAME:-ProxyService}"
+
+# ---------- 可选:读取 .env.deploy 中的 FC_NODES(与 deploy-fc.sh 语义一致) ----------
+# 存在则 source,让 .env.deploy 里配置的 FC_NODES 同样作用于本脚本;
+# 文件不存在(纯生成客户端,无需部署凭据)时跳过,仅用环境变量/命令行参数
+DEPLOY_ENV="${REPO_DIR}/.env.deploy"
+[ -f "$DEPLOY_ENV" ] && . "$DEPLOY_ENV"
 
 # ---------- 确定要生成的节点 ----------
 # 优先级:命令行参数 > FC_NODES 环境变量 > 全部节点(s.yaml)

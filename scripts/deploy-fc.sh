@@ -7,6 +7,8 @@
 #   ./scripts/deploy-fc.sh deploy           # 跳过构建推送,仅部署(镜像已存在)
 #   ./scripts/deploy-fc.sh deploy sg        # 仅部署新加坡
 #   ./scripts/deploy-fc.sh deploy tokyo     # 仅部署东京
+#   FC_NODES=sg,hk,tokyo ./scripts/deploy-fc.sh            # 按 FC_NODES 批量部署(逗号分隔,与 CI 语义一致)
+#   FC_NODES=sg,hk,tokyo ./scripts/deploy-fc.sh deploy     # 跳过构建,仅部署 FC_NODES 指定节点
 #
 # 依赖:
 #   - docker(Docker Desktop,Apple Silicon 亦可)、node/npm(首次自动装 Serverless Devs)
@@ -14,7 +16,7 @@
 #   - .env.deploy(部署凭据:Docker Hub/阿里云,模板见 .env.deploy.example)
 # 注意:
 #   - Docker Hub 仓库必须是 Public,FC 拉取无需凭据
-#   - 各节点(新加坡/香港/首尔/东京)均用 Docker Hub 公共镜像
+#   - 各节点均用 Docker Hub 公共镜像
 set -e
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -22,7 +24,7 @@ FC_DIR="${REPO_DIR}/fc"
 IMAGE_NAME="voynix-xray"
 
 MODE="${1:-build}"    # build(默认) | deploy
-TARGET="${2:-both}"   # both(全部)| sg | hk | tokyo | frankfurt | va | sv | hangzhou | shanghai | beijing | zhangjiakou | huhehaote | shenzhen
+TARGET="${2:-}"       # 可选:both(全部)| 节点键;未指定时用 FC_NODES 环境变量,仍无则部署全部
 
 # ---------- 读取本地 env(运行时变量 + 部署凭据分开存放) ----------
 RUNTIME_ENV="${REPO_DIR}/docker-image/.env"    # UUID / GRPC_SERVICE_NAME
@@ -88,23 +90,39 @@ if [ "$MODE" != "deploy" ]; then
   docker push "docker.io/${DOCKERHUB_USERNAME}/${IMAGE_NAME}:latest"
 fi
 
+# ---------- 确定部署节点 ----------
+# 优先级:命令行参数 > FC_NODES 环境变量 > 全部节点(both)
+# FC_NODES 与 CI/gen-client-config.sh 语义一致:逗号分隔节点键;空/纯空白 → 显式报错
+VALID_KEYS="sg hk tokyo frankfurt va sv hangzhou shanghai beijing zhangjiakou huhehaote shenzhen"
+
+if [ -n "$TARGET" ]; then
+  NODES="$TARGET"
+elif [ -n "${FC_NODES:-}" ]; then
+  [ -n "${FC_NODES//[[:space:]]/}" ] || fail "FC_NODES 为空或纯空白,未指定任何节点(示例: FC_NODES=sg,hk,tokyo)"
+  NODES=$(echo "$FC_NODES" | tr ',' ' ')
+else
+  NODES="both"
+fi
+
+if [ "$NODES" != "both" ]; then
+  for key in $NODES; do
+    case " $VALID_KEYS " in
+      *" $key "*) ;;
+      *) fail "未知节点键 '$key'(可选: $VALID_KEYS,或 both 全部部署)" ;;
+    esac
+  done
+fi
+
 # ---------- 部署 FC ----------
 cd "$FC_DIR"
-case "$TARGET" in
-  both)  echo "[deploy-fc] 部署 全部节点(6 海外 + 6 国内)..."; s deploy -y ;;
-  sg)    echo "[deploy-fc] 部署 新加坡..."; s voynix-sg deploy -y ;;
-  hk)    echo "[deploy-fc] 部署 香港...";   s voynix-hk deploy -y ;;
-  tokyo) echo "[deploy-fc] 部署 东京...";   s voynix-tokyo deploy -y ;;
-  frankfurt) echo "[deploy-fc] 部署 法兰克福..."; s voynix-frankfurt deploy -y ;;
-  va)    echo "[deploy-fc] 部署 弗吉尼亚..."; s voynix-va deploy -y ;;
-  sv)    echo "[deploy-fc] 部署 硅谷...";   s voynix-sv deploy -y ;;
-  hangzhou) echo "[deploy-fc] 部署 杭州..."; s voynix-hangzhou deploy -y ;;
-  shanghai) echo "[deploy-fc] 部署 上海..."; s voynix-shanghai deploy -y ;;
-  beijing)  echo "[deploy-fc] 部署 北京..."; s voynix-beijing deploy -y ;;
-  zhangjiakou) echo "[deploy-fc] 部署 张家口..."; s voynix-zhangjiakou deploy -y ;;
-  huhehaote) echo "[deploy-fc] 部署 呼和浩特..."; s voynix-huhehaote deploy -y ;;
-  shenzhen) echo "[deploy-fc] 部署 深圳..."; s voynix-shenzhen deploy -y ;;
-  *)     fail "未知目标 '$TARGET'(可选: both|sg|hk|tokyo|frankfurt|va|sv|hangzhou|shanghai|beijing|zhangjiakou|huhehaote|shenzhen)" ;;
-esac
+if [ "$NODES" = "both" ]; then
+  echo "[deploy-fc] 部署 全部节点(6 海外 + 6 国内)..."
+  s deploy -y
+else
+  for key in $NODES; do
+    echo "[deploy-fc] 部署 $key..."
+    s voynix-${key} deploy -y
+  done
+fi
 
 echo "[deploy-fc] 完成 ✔ 请到 FC 控制台确认函数状态"
