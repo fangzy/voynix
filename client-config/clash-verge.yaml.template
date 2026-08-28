@@ -9,7 +9,6 @@ tcp-fast-open: true
 unified-delay: true
 find-process-mode: off
 geodata-mode: true
-global-client-fingerprint: chrome
 profile:
   store-selected: true
   store-fake-ip: true
@@ -55,6 +54,12 @@ proxies:
 
 rules:
   - AND,((NETWORK,udp),(DST-PORT,443)),REJECT
+  # ---- MSN/Bing 直连(微软中国服务,不走 proxy)----
+  - DOMAIN-SUFFIX,msn.com,DIRECT
+  - DOMAIN-SUFFIX,msn.com.cn,DIRECT
+  - DOMAIN-SUFFIX,msn.cn,DIRECT
+  - DOMAIN-SUFFIX,bing.com,DIRECT
+  - DOMAIN-SUFFIX,bing.com.cn,DIRECT
   # ---- 系统打点/遥测/推送直连,不走 proxy(降低成本)----
   - DOMAIN,wpad,DIRECT
   - DOMAIN-SUFFIX,msftconnecttest.com,DIRECT
@@ -78,7 +83,9 @@ rules:
   - DOMAIN-SUFFIX,netflix.com,Streaming
   - DOMAIN-SUFFIX,google.com,Proxy
   - DOMAIN-SUFFIX,github.com,Proxy
-  - DOMAIN-SUFFIX,bilibili.com,DIRECT
-  - DOMAIN-SUFFIX,baidu.com,DIRECT
+  # ---- 国内域名直连(GEOSITE 按域名判断,解决海外 CDN IP 漏判)----
+  - GEOSITE,cn,DIRECT
+  # ---- 海外域名走代理(geolocation-!cn 非中国域名)----
+  - GEOSITE,geolocation-!cn,Proxy
   - GEOIP,CN,DIRECT
-  - MATCH,Proxy
+  - MATCH,DIRECT

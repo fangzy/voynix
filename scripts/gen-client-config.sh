@@ -172,7 +172,7 @@ proxy-groups:
   # 自动选优:按延迟(每 300s 测速)在所有节点间切换
   - name: \"${CLIENT_PREFIX}-Auto\"
     type: url-test
-    url: 'http://www.gstatic.com/generate_204'
+    url: 'https://github.com/manifest.json'
     interval: 300
     tolerance: 50
     proxies:$GROUP_MEMBERS

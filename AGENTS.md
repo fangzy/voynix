@@ -192,4 +192,5 @@ Note: CN nodes (cn-*) defined 2026-08 per request; deploying proxy on CN regions
 - No test suite. Infrastructure project
 - Runtime envsubst means config changes only need a container restart, not a rebuild
 - gRPC transport (multiMode is client-side only, not set on server)
-- Client config `Voynix-Auto` url-test measures `http://www.gstatic.com/generate_204` every 300s (tolerance 50ms)
+- gRPC keepalive: `grpcSettings` sets `idle_timeout: 60` / `health_check_timeout: 20` → Xray server sends HTTP/2 PING on idle connections (every 60s) so FC gateway never silently reclaims long-lived gRPC connections; this is what prevents "unexpected EOF" from gh CLI reusing a dead connection. mihomo auto-ACKs PING per HTTP/2 spec (no client config needed). `initial_windows_size` is client-side only (Xray client), useless for mihomo — don't set it
+- Client config `Voynix-Auto` url-test measures `https://github.com/manifest.json` every 300s (tolerance 50ms)
