@@ -1,21 +1,20 @@
 # Serverless Devs 配置 — Voynix Xray WebSocket 实验节点(仅新加坡,独立配置文件)
 #
-# 目的:与生产 gRPC 配置(fc/s.yaml)隔离的 WS 传输实验,不影响生产节点。
+# 目的:独立于生产配置(fc/s.yaml)的 WS 实验节点,不影响生产节点。
 #   - 独立函数名  ${IMAGE_NAME}-ws-sg(默认 voynix-xray-ws-sg),与生产 voynix-xray-sg 并存
 #   - 独立镜像 tag :ws(docker.io/<user>/voynix-xray:ws),不动 :latest
-#   - 容器内通过 TRANSPORT=ws 选择 WS 配置模板(entrypoint.sh 支持)
+#   - WS 配置模板(entrypoint.sh,单一 config.template.json)
 #
 # 部署用法(需先 export 依赖环境变量,参见 scripts/deploy-fc.sh 的加载逻辑):
 #   cd fc && s deploy -t s.ws.yaml -y
 #
 # 依赖环境变量:
 #   UUID                  VLESS 客户端 UUID(必填,与生产同 UUID,便于客户端 A/B)
-#   GRPC_SERVICE_NAME     默认 ProxyService
 #   WS_PATH               默认 ws(WS path = /ws,客户端 ws-opts.path 需一致)
 #   DOCKERHUB_USERNAME    Docker Hub 用户名
 #   IMAGE_NAME            默认 voynix-xray(镜像名 + 函数名前缀)
 #   FC_BEARER_TOKEN       Bearer 认证 token(32-128 字符,Base64 字符集;客户端 ws-opts.headers
-#                         带 Authorization: Bearer <token>;存于 docker-image/.env,gitingored)
+#                         带 Authorization: Bearer <token>;存于 .env common 节,gitignored)
 #
 # 密钥(access: default)由 `s config add -a default` 配置(scripts/deploy-fc.sh 会自动配置)
 edition: 3.0.0
@@ -49,8 +48,6 @@ resources:
         port: 8089
       environmentVariables:
         UUID: ${env(UUID)}
-        GRPC_SERVICE_NAME: ${env(GRPC_SERVICE_NAME)}
-        TRANSPORT: ws
         WS_PATH: ${env(WS_PATH)}
       triggers:
         - triggerName: httpTrigger

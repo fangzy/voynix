@@ -12,8 +12,7 @@
 #
 # 依赖:
 #   - docker(Docker Desktop,Apple Silicon 亦可)、node/npm(首次自动装 Serverless Devs)
-#   - docker-image/.env(运行时变量:UUID/GRPC_SERVICE_NAME)
-#   - .env.deploy(部署凭据:Docker Hub/阿里云,模板见 .env.deploy.example)
+#   - .env(统一环境变量:common/deploy/client 三节,模板见 .env.example)
 # 注意:
 #   - Docker Hub 仓库必须是 Public,FC 拉取无需凭据
 #   - 各节点均用 Docker Hub 公共镜像
@@ -26,39 +25,31 @@ IMAGE_NAME="${IMAGE_NAME:-voynix-xray}"   # Docker Hub 镜像名/FC 函数名前
 MODE="${1:-build}"    # build(默认) | deploy
 TARGET="${2:-}"       # 可选:both(全部)| 节点键;未指定时用 FC_NODES 环境变量,仍无则部署全部
 
-# ---------- 读取本地 env(运行时变量 + 部署凭据分开存放) ----------
-RUNTIME_ENV="${REPO_DIR}/docker-image/.env"    # UUID / GRPC_SERVICE_NAME
-DEPLOY_ENV="${REPO_DIR}/.env.deploy"           # Docker Hub / 阿里云凭据
+# ---------- 读取统一环境变量(根目录 .env:common/deploy/client 三节) ----------
+ENV_FILE="${REPO_DIR}/.env"
 
-[ -f "$RUNTIME_ENV" ] || {
-  echo "错误: 未找到 $RUNTIME_ENV"
-  echo "请先执行: cp docker-image/.env.example docker-image/.env 并填入 UUID"
+[ -f "$ENV_FILE" ] || {
+  echo "错误: 未找到 $ENV_FILE"
+  echo "请先执行: cp .env.example .env 并填写"
   exit 1
 }
-[ -f "$DEPLOY_ENV" ] || {
-  echo "错误: 未找到 $DEPLOY_ENV"
-  echo "请先执行: cp .env.deploy.example .env.deploy 并填入部署凭据"
-  exit 1
-}
-. "$RUNTIME_ENV"
-. "$DEPLOY_ENV"
+. "$ENV_FILE"
 
 UUID="${UUID:-}"
-GRPC_SERVICE_NAME="${GRPC_SERVICE_NAME:-ProxyService}"
 FC_BEARER_TOKEN="${FC_BEARER_TOKEN:-}"
 WS_PATH="${WS_PATH:-ws}"
 
 # ---------- 校验必需变量 ----------
 fail() { echo "错误: $1"; exit 1; }
-[ -n "$UUID" ] || fail "UUID 未设置($RUNTIME_ENV)"
-[ -n "$FC_BEARER_TOKEN" ] || fail "FC_BEARER_TOKEN 未设置($RUNTIME_ENV,生产触发器已开启 Bearer 鉴权)"
-[ -n "$ALIBABA_CLOUD_ACCOUNT_ID" ] || fail "ALIBABA_CLOUD_ACCOUNT_ID 未设置($DEPLOY_ENV)"
-[ -n "$ALIBABA_CLOUD_ACCESS_KEY_ID" ] || fail "ALIBABA_CLOUD_ACCESS_KEY_ID 未设置($DEPLOY_ENV)"
-[ -n "$ALIBABA_CLOUD_ACCESS_KEY_SECRET" ] || fail "ALIBABA_CLOUD_ACCESS_KEY_SECRET 未设置($DEPLOY_ENV)"
-[ -n "$DOCKERHUB_USERNAME" ] || fail "DOCKERHUB_USERNAME 未设置($DEPLOY_ENV,各节点镜像仓库 owner)"
+[ -n "$UUID" ] || fail "UUID 未设置($ENV_FILE)"
+[ -n "$FC_BEARER_TOKEN" ] || fail "FC_BEARER_TOKEN 未设置($ENV_FILE,生产触发器已开启 Bearer 鉴权)"
+[ -n "$ALIBABA_CLOUD_ACCOUNT_ID" ] || fail "ALIBABA_CLOUD_ACCOUNT_ID 未设置($ENV_FILE)"
+[ -n "$ALIBABA_CLOUD_ACCESS_KEY_ID" ] || fail "ALIBABA_CLOUD_ACCESS_KEY_ID 未设置($ENV_FILE)"
+[ -n "$ALIBABA_CLOUD_ACCESS_KEY_SECRET" ] || fail "ALIBABA_CLOUD_ACCESS_KEY_SECRET 未设置($ENV_FILE)"
+[ -n "$DOCKERHUB_USERNAME" ] || fail "DOCKERHUB_USERNAME 未设置($ENV_FILE,各节点镜像仓库 owner)"
 
 # s.yaml 中的 ${env(...)} 需要这些变量
-export UUID GRPC_SERVICE_NAME IMAGE_NAME FC_BEARER_TOKEN WS_PATH
+export UUID IMAGE_NAME FC_BEARER_TOKEN WS_PATH
 export DOCKERHUB_USERNAME
 
 # ---------- 安装/检查 Serverless Devs ----------

@@ -7,8 +7,7 @@
 #   OUT_FILE=clash-verge-sg-tokyo.yaml ./scripts/gen-client-config.sh sg tokyo  # 自定义输出文件名(生成多份配置)
 #
 # 依赖:
-#   - docker-image/.env(UUID/GRPC_SERVICE_NAME)
-#   - .env.deploy(可选,FC_NODES 部署范围;不存在则仅用环境变量)
+#   - .env(统一环境变量:common/deploy/client 三节,模板见 .env.example)
 #   - aliyun CLI(默认 aliyun,找不到则用 /private/tmp/aliyun)
 #   - python3(解析 s.yaml 与 FC API 输出)
 #
@@ -19,7 +18,7 @@
 set -e
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-ENV_FILE="${REPO_DIR}/docker-image/.env"
+ENV_FILE="${REPO_DIR}/.env"   # 统一环境变量(common/deploy/client 三节)
 S_YAML="${REPO_DIR}/fc/s.yaml"
 TEMPLATE="${REPO_DIR}/client-config/clash-verge.yaml.template"
 # 输出文件名:可用 OUT_FILE 环境变量覆盖(如 OUT_FILE=clash-verge-sg-tokyo.yaml 生成多份配置)
@@ -35,10 +34,10 @@ else
 fi
 "$ALIYUN" --version >/dev/null 2>&1 || { echo "错误: 未找到 aliyun CLI,请安装或配置路径"; exit 1; }
 
-# ---------- 读取运行时变量 ----------
+# ---------- 读取统一环境变量 ----------
 [ -f "$ENV_FILE" ] || {
   echo "错误: 未找到 $ENV_FILE"
-  echo "请先执行: cp docker-image/.env.example docker-image/.env 并填入 UUID"
+  echo "请先执行: cp .env.example .env 并填写"
   exit 1
 }
 . "$ENV_FILE"
@@ -47,18 +46,11 @@ if [ -z "$UUID" ] || [ "$UUID" = "your-uuid-here" ]; then
   echo "错误: UUID 未设置($ENV_FILE)"
   exit 1
 fi
-GRPC_SERVICE_NAME="${GRPC_SERVICE_NAME:-ProxyService}"
 FC_BEARER_TOKEN="${FC_BEARER_TOKEN:-}"
 if [ -z "$FC_BEARER_TOKEN" ]; then
   echo "错误: FC_BEARER_TOKEN 未设置($ENV_FILE,生产触发器已开启 Bearer 鉴权)"
   exit 1
 fi
-
-# ---------- 可选:读取 .env.deploy 中的 FC_NODES(与 deploy-fc.sh 语义一致) ----------
-# 存在则 source,让 .env.deploy 里配置的 FC_NODES 同样作用于本脚本;
-# 文件不存在(纯生成客户端,无需部署凭据)时跳过,仅用环境变量/命令行参数
-DEPLOY_ENV="${REPO_DIR}/.env.deploy"
-[ -f "$DEPLOY_ENV" ] && . "$DEPLOY_ENV"
 
 # ---------- 镜像名/函数名前缀(公开 fork 可改,默认 voynix-xray) ----------
 IMAGE_NAME="${IMAGE_NAME:-voynix-xray}"
@@ -168,15 +160,105 @@ for line in $NODE_LINES; do
 done
 
 # ---------- 生成 proxy-groups ----------
+# 先建立 key → 节点显示名 映射(key|Voynix-Name)
+NODE_NAME_MAP=""
 GROUP_MEMBERS=""
 for line in $NODE_LINES; do
   key=$(echo "$line" | cut -d'|' -f1)
   name=$(echo "$key" | awk '{ if (length($0) == 2) print toupper($0); else print toupper(substr($0,1,1)) substr($0,2) }')
+  NODE_NAME_MAP="$NODE_NAME_MAP
+$key|${CLIENT_PREFIX}-$name"
   GROUP_MEMBERS="$GROUP_MEMBERS
       - ${CLIENT_PREFIX}-$name"
 done
 
+# 场景组(可选):SCENE_NODES="company=sg,tokyo;home=hk,tokyo"(分号分隔场景,逗号分隔节点 key)
+# 每个场景生成 Auto(url-test)+LB(load-balance)子组;有场景时顶层 Voynix-Scene 直接列各场景 Auto/LB + 全量 Auto
+SCENES_TEXT=""
+SCENE_REF=""
+if [ -n "${SCENE_NODES:-}" ]; then
+  SCENE_SELECT_MEMBERS=""
+  for scene in $(echo "$SCENE_NODES" | tr ';' ' '); do
+    scene_name=$(echo "$scene" | cut -d= -f1)
+    node_keys=$(echo "$scene" | cut -d= -f2- | tr ',' ' ')
+    scene_display=$(echo "$scene_name" | awk '{ print toupper(substr($0,1,1)) substr($0,2) }')
+    scene_members=""
+    missing=""
+    for k in $node_keys; do
+      node_line=$(echo "$NODE_NAME_MAP" | grep "^$k|" | head -1)
+      if [ -z "$node_line" ]; then
+        missing="$missing $k"
+      else
+        scene_members="$scene_members
+      - ${node_line#*|}"
+      fi
+    done
+    if [ -n "$missing" ] || [ -z "$scene_members" ]; then
+      echo "  ⚠️ 跳过场景 $scene_name: 节点缺失($missing)或为空"
+      continue
+    fi
+    SCENES_TEXT="$SCENES_TEXT
+  # $scene_display 场景:按延迟选优
+  - name: \"${CLIENT_PREFIX}-$scene_display-Auto\"
+    type: url-test
+    url: 'https://github.com/manifest.json'
+    interval: 300
+    tolerance: 50
+    proxies:$scene_members
+
+  # $scene_display 场景:负载均衡
+  - name: \"${CLIENT_PREFIX}-$scene_display-LB\"
+    type: load-balance
+    strategy: round-robin
+    url: 'https://github.com/manifest.json'
+    interval: 300
+    proxies:$scene_members
+"
+    SCENE_SELECT_MEMBERS="$SCENE_SELECT_MEMBERS
+      - ${CLIENT_PREFIX}-$scene_display-Auto
+      - ${CLIENT_PREFIX}-$scene_display-LB"
+  done
+  if [ -n "$SCENE_SELECT_MEMBERS" ]; then
+    SCENES_TEXT="$SCENES_TEXT
+  # 场景切换:各场景 Auto/LB + 全量 Auto
+  - name: \"${CLIENT_PREFIX}-Scene\"
+    type: select
+    proxies:$SCENE_SELECT_MEMBERS
+      - ${CLIENT_PREFIX}-Auto
+"
+    SCENE_REF="
+      - ${CLIENT_PREFIX}-Scene"
+  fi
+fi
+
 # 注意:变量名不用 GROUPS(bash 中是只读数组,赋值会静默失败)
+# 有场景时精简结构:去掉全量 LB,Proxy/Streaming 指向 Scene;无场景时保持原结构(Auto+LB)
+if [ -n "$SCENE_REF" ]; then
+  LB_BLOCK=""
+  PROXY_MEMBERS="$SCENE_REF
+      - DIRECT"
+  STREAMING_MEMBERS="
+      - ${CLIENT_PREFIX}-Scene
+      - Proxy"
+else
+  LB_BLOCK="
+  # 负载均衡:连接轮询分发到所有节点
+  - name: \"${CLIENT_PREFIX}-LB\"
+    type: load-balance
+    strategy: round-robin
+    url: 'https://github.com/manifest.json'
+    interval: 300
+    proxies:$GROUP_MEMBERS
+"
+  PROXY_MEMBERS="
+      - ${CLIENT_PREFIX}-Auto
+      - ${CLIENT_PREFIX}-LB
+      - DIRECT"
+  STREAMING_MEMBERS="
+      - ${CLIENT_PREFIX}-Auto
+      - Proxy"
+fi
+
 GROUPS_TEXT="
 proxy-groups:
   # 时间优先:按延迟(每 300s 测速)选最优节点
@@ -186,28 +268,14 @@ proxy-groups:
     interval: 300
     tolerance: 50
     proxies:$GROUP_MEMBERS
-
-  # 负载均衡:连接轮询分发到所有节点
-  - name: \"${CLIENT_PREFIX}-LB\"
-    type: load-balance
-    strategy: round-robin
-    url: 'https://github.com/manifest.json'
-    interval: 300
-    proxies:$GROUP_MEMBERS
-
-  # 切换开关:时间优先(Auto) 或 负载均衡(LB)
+$LB_BLOCK$SCENES_TEXT  # 切换开关:场景组(如有) / 时间优先(Auto) / 负载均衡(LB)
   - name: \"Proxy\"
     type: select
-    proxies:
-      - ${CLIENT_PREFIX}-Auto
-      - ${CLIENT_PREFIX}-LB
-      - DIRECT
+    proxies:$PROXY_MEMBERS
 
   - name: \"Streaming\"
     type: select
-    proxies:
-      - ${CLIENT_PREFIX}-Auto
-      - Proxy
+    proxies:$STREAMING_MEMBERS
 "
 
 # ---------- 注入模板输出 ----------

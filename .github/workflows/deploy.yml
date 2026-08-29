@@ -135,7 +135,6 @@ jobs:
         env:
           FC_NODES: ${{ vars.FC_NODES }}
           UUID: ${{ secrets.UUID }}
-          GRPC_SERVICE_NAME: ${{ secrets.GRPC_SERVICE_NAME || 'ProxyService' }}
           FC_BEARER_TOKEN: ${{ secrets.FC_BEARER_TOKEN }}
           WS_PATH: ${{ secrets.WS_PATH || 'ws' }}
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}

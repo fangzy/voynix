@@ -11,10 +11,9 @@
 #
 # 依赖环境变量:
 #   UUID                  VLESS 客户端 UUID(必填,须与客户端配置一致)
-#   GRPC_SERVICE_NAME     默认 ProxyService
 #   DOCKERHUB_USERNAME    Docker Hub 用户名(各节点镜像仓库 owner)
 #   FC_BEARER_TOKEN       HTTP 触发器 Bearer 鉴权 token(必填,32-128 字符 Base64 字符集;
-#                         存 docker-image/.env,gitignored;客户端 ws-opts.headers 带 Authorization: Bearer)
+#                         存 .env common 节,gitignored;客户端 ws-opts.headers 带 Authorization: Bearer)
 #
 # 密钥(access: default)由 CI 的 setup-s 或本地 `s config add` 配置
 #
@@ -61,8 +60,6 @@ x-node: &node-base
     port: 8089
   environmentVariables:
     UUID: ${env(UUID)}
-    GRPC_SERVICE_NAME: ${env(GRPC_SERVICE_NAME)}
-    TRANSPORT: ws
     WS_PATH: ${env(WS_PATH)}
   triggers:
     - triggerName: httpTrigger
