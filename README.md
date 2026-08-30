@@ -1,6 +1,6 @@
 # Voynix
 
-基于 Xray-core 的独立 Docker 代理服务，使用 VLESS + gRPC + TLS 协议，部署到阿里云函数计算 (FC) 多地域节点（12 个地域：6 海外 + 6 国内）。客户端配置自动生成，支持按延迟自动切换节点。
+基于 Xray-core 的独立 Docker 代理服务，使用 VLESS + WebSocket + TLS 协议，部署到阿里云函数计算 (FC) 多地域节点（12 个地域：6 海外 + 6 国内）。客户端配置自动生成，支持按延迟自动切换节点。
 
 ## 使用方式一览
 
@@ -38,7 +38,7 @@ UUID 用于以下位置:
 ```
 Client (mihomo/Clash)
     │
-    │ VLESS + gRPC + TLS (fcapp.run:8089, ALPN h2)
+    │ VLESS + WebSocket + TLS (fcapp.run:443 WSS, Bearer 鉴权)
     ├──────────────┬──────────────┬──────────────┬───────────┬────────── ...
     ↓              ↓              ↓              ↓
  香港 FC         新加坡 FC       东京 FC       法兰克福 FC  其他节点
@@ -57,7 +57,7 @@ Internet       Internet       Internet       Internet
 ```
 ┌─────────────────────────────────┐
 │       Client (mihomo/Clash)     │
-│         VLESS + gRPC            │
+│         VLESS + WebSocket    │
 └───────────────┬─────────────────┘
                 │
                 │  port 8089
@@ -75,18 +75,18 @@ Internet       Internet       Internet       Internet
 
 > 部署哪些地域由 **`FC_NODES`** 控制(逗号分隔,任意子集,如 `sg,hk,tokyo`),`fc/s.yaml` 只维护可用节点清单。**未设置或为空时显式报错**,未知节点键同样报错。
 
-> FC 网关终止 TLS，Xray inbound 为明文 gRPC（无 `security:tls`），客户端连 FC 域名的 **8089** 端口（FC gRPC 入口，支持 HTTP/2 ALPN h2），`skip-cert-verify: true`。
+> FC 网关终止 TLS，Xray inbound 为明文 WS（无 `security:tls`），客户端连 FC 域名的 **443** 端口（WSS 入口），`skip-cert-verify: true`。
 
 ## 特性
 
 - ✅ **VLESS 协议**: 轻量高效的代理协议
-- ✅ **gRPC 传输**: 基于 HTTP/2，客户端支持 multiMode
+- ✅ **WebSocket 传输**: WS + Bearer 鉴权（HTTP 触发器 `authType: bearer`，客户端 `ws-opts.headers` 携带 `Authorization: Bearer <token>`）
 - ✅ **TLS 加密**: FC 部署由 FC 网关终止 TLS
 - ✅ **开箱即用**: 配置好 GitHub Secrets/Variables 后,推送代码自动构建+部署
 - ✅ **一键部署**: `deploy-fc.sh` 构建 → 推送 → 部署,支持单节点或 `FC_NODES` 批量部署
 - ✅ **自动生成客户端配置**: `gen-client-config.sh` 自动抓取 FC 节点域名,无需手填
 - ✅ **轻量镜像**: Alpine 3.20 基础镜像，约 35MB
-- ✅ **低成本**: FC 按量计费,minInstances 0 无请求不收费,0.1 vCPU/128MB 轻量规格,gRPC 长连接复用降低并发费用
+- ✅ **低成本**: FC 按量计费,minInstances 0 无请求不收费,0.1 vCPU/128MB 轻量规格,长连接复用降低并发费用
 - ✅ **运行时配置**: envsubst 模板替换，改配置只需重启容器
 - ✅ **私有 IP 过滤**: 路由规则屏蔽 geoip:private
 - ✅ **FC 多地域**: 6 个海外 + 6 个国内地域节点
@@ -102,7 +102,7 @@ voynix/
 │   ├── entrypoint.sh                 # 容器入口脚本
 │   ├── healthcheck.sh                # 健康检查脚本
 │   ├── docker-compose.yml            # Compose 配置(本地调试)
-│   └── .env.example                  # 运行时环境变量示例 (UUID/GRPC_SERVICE_NAME)
+│   └── .env.example                  # 运行时环境变量示例 (UUID/WS_PATH/FC_BEARER_TOKEN)
 ├── client-config/
 │   └── clash-verge.yaml.template     # 客户端配置模板(多节点 + url-test)
 ├── fc/
@@ -136,7 +136,8 @@ voynix/
 | `ALIBABA_CLOUD_ACCESS_KEY_ID` | 是 | 阿里云 AccessKey ID |
 | `ALIBABA_CLOUD_ACCESS_KEY_SECRET` | 是 | 阿里云 AccessKey Secret |
 | `UUID` | 是 | VLESS 客户端认证 UUID(见「公共前置准备:UUID」) |
-| `GRPC_SERVICE_NAME` | 否 | 默认 `ProxyService`(不设置则用默认值) |
+| `FC_BEARER_TOKEN` | 是 | HTTP 触发器 Bearer 鉴权 token(32-128 字符 Base64 字符集,与客户端 `ws-opts.headers` 的 `Authorization: Bearer` 一致) |
+| `WS_PATH` | 否 | 默认 `ws`(客户端 `ws-opts.path` 须一致) |
 | `IMAGE_NAME` | 否 | 默认 `voynix-xray`(Docker Hub 镜像名与 FC 函数名前缀,公开 fork 可改,需与本地 `.env.deploy` 一致) |
 
 **Variables**(在 **Variables** 页签添加):
@@ -182,7 +183,7 @@ git push origin main   # 或推送 docker-image/**、fc/** 相关改动
 
 - 已部署 FC 节点(见「开箱即用」或「本地手动部署」)
 - aliyun CLI(需已 `aliyun configure` 登录)
-- `docker-image/.env` 中的 `UUID` 和 `GRPC_SERVICE_NAME`
+- `docker-image/.env` 中的 `UUID`(以及可选的 `WS_PATH`、`FC_BEARER_TOKEN`)
 
 ### 2. 生成配置
 
@@ -206,12 +207,14 @@ FC_NODES=sg,hk,tokyo ./scripts/gen-client-config.sh
 
 | 代理 | 说明 |
 |------|------|
-| `Voynix-SG` | 新加坡节点 (fcapp.run:8089) |
-| `Voynix-HK` | 香港节点 (fcapp.run:8089) |
-| `Voynix-Tokyo` | 东京节点 (fcapp.run:8089) |
-| `Voynix-Auto` | url-test 组,每 300s 测速(`http://www.gstatic.com/generate_204`),按延迟自动切换,容差 50ms |
+| `Voynix-SG` | 新加坡节点 (fcapp.run:443 WSS) |
+| `Voynix-HK` | 香港节点 (fcapp.run:443 WSS) |
+| `Voynix-Tokyo` | 东京节点 (fcapp.run:443 WSS) |
+| `Voynix-Auto` | url-test 组,每 300s 测速(`https://github.com/manifest.json`),按延迟自动切换,容差 50ms |
 
-> FC 节点端口必须是 **8089**(FC gRPC 入口,支持 HTTP/2 ALPN h2;443 端口不支持 h2,无法用于 gRPC)。
+> FC 节点端口必须是 **443**(WSS;FC 网关终止 TLS)。
+
+> 模板内置规则:MSN/Bing 与系统打点(events.data.microsoft.com 等)直连不走代理;国外遥测/埋点域名(`analytics.google.com`、`googletagmanager.com`、`doubleclick.net`、`mobile.events.data.microsoft.com`、`default.exp-tas.com`、`scorecardresearch.com`)在 rules 顶部 REJECT,省代理流量。
 
 ### 4. 导入 Clash Verge(正常使用)
 
@@ -225,7 +228,7 @@ FC_NODES=sg,hk,tokyo ./scripts/gen-client-config.sh
 
 ### 5. 测速 URL 说明
 
-`Voynix-Auto` 组默认使用 `http://www.gstatic.com/generate_204` 测速（返回 204、无流量消耗、全球可达）。如需更换，修改模板中 `url-test` 的 `url` 字段后重新生成。
+`Voynix-Auto` 组默认使用 `https://github.com/manifest.json` 测速（全球可达）。如需更换，修改模板中 `url-test` 的 `url` 字段后重新生成。
 
 ## 本地手动部署(deploy-fc.sh)
 
@@ -328,9 +331,10 @@ docker pull <user>/voynix-xray:latest
 | 变量 | 必需 | 默认值 | 说明 |
 |------|------|--------|------|
 | `UUID` | 是 | (无) | VLESS 客户端认证 UUID(生成见「公共前置准备:UUID」) |
-| `GRPC_SERVICE_NAME` | 否 | `ProxyService` | gRPC 传输的服务名称 |
+| `WS_PATH` | 否 | `ws` | WebSocket 路径(客户端 `ws-opts.path` 须一致,如 `/ws`) |
+| `FC_BEARER_TOKEN` | 是 | (无) | HTTP 触发器 Bearer 鉴权 token(32-128 字符 Base64 字符集,客户端 `ws-opts.headers` 带 `Authorization: Bearer <token>`) |
 
-容器启动时 `entrypoint.sh` 用 envsubst 将这两个变量注入 `config.template.json` 生成 `config.json`,改配置只需重启容器。
+容器启动时 `entrypoint.sh` 用 envsubst 将这三个变量注入 `config.template.json` 生成 `config.json`,改配置只需重启容器。
 
 ### 部署凭据(.env.deploy)
 
@@ -365,7 +369,8 @@ docker pull <user>/voynix-xray:latest
 | 本地文件 | GitHub Actions | 说明 |
 |---------|---------------|------|
 | `docker-image/.env` 的 `UUID` | **Secrets.**`UUID` | CI 部署时注入 FC 环境变量 |
-| `docker-image/.env` 的 `GRPC_SERVICE_NAME` | **Secrets.**`GRPC_SERVICE_NAME`(可选) | 不设置则用默认值 |
+| `docker-image/.env` 的 `FC_BEARER_TOKEN` | **Secrets.**`FC_BEARER_TOKEN` | HTTP 触发器 Bearer 鉴权 token |
+| `docker-image/.env` 的 `WS_PATH` | **Secrets.**`WS_PATH`(可选,默认 `ws`) | WebSocket 路径 |
 | `.env.deploy` 的 5 个凭据 | **Secrets.** 同名 5 项 | 与本地文件一一对应 |
 | `FC_NODES` | **Variables.**`FC_NODES` | 部署范围控制 |
 | `IMAGE_NAME` | **Secrets.**`IMAGE_NAME`(可选) | 镜像/函数名前缀,默认 `voynix-xray` |
@@ -374,20 +379,20 @@ docker pull <user>/voynix-xray:latest
 
 ## 技术细节
 
-### gRPC 配置
+### WebSocket 配置
 
 ```json
 {
   "streamSettings": {
-    "network": "grpc",
-    "grpcSettings": {
-      "serviceName": "ProxyService"
+    "network": "ws",
+    "wsSettings": {
+      "path": "/ws"
     }
   }
 }
 ```
 
-> inbound 为明文 gRPC（无 `security:tls`），TLS 由 FC 网关终止。
+> inbound 为明文 WS（无 `security:tls`），TLS 由 FC 网关终止；HTTP 触发器开启 Bearer 鉴权，客户端 `ws-opts.headers` 携带 `Authorization: Bearer <token>`。
 
 ### Xray-core 版本
 
@@ -408,7 +413,7 @@ docker inspect --format='{{.State.Health.Status}}' <container_name>
 ### 测试连接
 
 ```bash
-# 测试本地端口是否可达(明文 gRPC,无 TLS,不要用 curl https)
+# 测试本地端口是否可达(明文 WS,无 TLS,不要用 curl https)
 nc -zv localhost 8089
 
 # 通过代理测试
@@ -430,7 +435,7 @@ curl -x http://127.0.0.1:7890 https://www.google.com
 ```
 检查项:
 - 客户端和服务端 UUID 是否一致
-- gRPC 服务名是否匹配
+- WS path 是否一致(默认 `/ws`,须与服务端 `WS_PATH` 相同)
 - 客户端配置中的服务器地址是否正确
 ```
 
@@ -442,19 +447,20 @@ curl -x http://127.0.0.1:7890 https://www.google.com
 - 确认 Docker 版本支持 Compose V2
 ```
 
-**4. FC 节点 curl 返回 502 (Process exited unexpectedly)**
+**4. FC 节点 curl 返回 403 / 400**
 ```
-原因: curl 发的是 HTTP/1.1 请求,VLESS+gRPC 只接受 HTTP/2(FC gRPC 入口)。
-这通常是误判,不代表节点故障。
+原因: FC HTTP 触发器开启 Bearer 鉴权——无 token/错 token → 403;带对 token 的普通 HTTP 请求 → 400(已过网关到容器,但不是 WS 升级)。
+这通常是验证方式不对,不代表节点故障。
 正确验证:
 - 用真实 mihomo 客户端: mihomo -f client-config/clash-verge.yaml
 - curl -x http://127.0.0.1:7890 https://www.google.com   # 返回 204 即为通
+- 裸 WS 握手验证: 对 token + `Upgrade: websocket` 头 → 101(路径不匹配/旧实例 → 404)
 ```
 
-**5. mihomo 报 `http2: unexpected ALPN protocol, want h2`**
+**5. mihomo 报 WS 握手 404 / 500**
 ```
-原因: 客户端端口配成了 443,而 FC 的 gRPC 入口是 8089(支持 ALPN h2),443 不支持。
-修复: 重新生成配置,端口用 8089
+原因: 客户端端口或路径配错——FC WS 入口是 443;`ws-opts.path` 与服务端 `WS_PATH` 不一致 → 404。
+修复: 重新生成配置(端口 443、path 与 WS_PATH 一致、带 Bearer 鉴权头)
   ./scripts/gen-client-config.sh
 ```
 

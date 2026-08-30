@@ -1,4 +1,4 @@
-# Stage 1: Build (xray download only — no certs: FC gateway does TLS, inbound is plain gRPC/WS)
+# Stage 1: Build (xray download only — no certs: FC gateway does TLS, inbound is plain WS)
 # APK_MIRROR: default dl-cdn.alpinelinux.org (fast on CI / non-CN); local CN builds pass
 #   --build-arg APK_MIRROR=mirrors.aliyun.com  (dl-cdn is unreachable/slow in CN)
 FROM alpine:3.20 AS builder
@@ -21,7 +21,7 @@ RUN sed -i "s|dl-cdn.alpinelinux.org|${APK_MIRROR}|g" /etc/apk/repositories \
     && rm /tmp/xray.zip \
     && chmod +x /usr/local/bin/xray
 
-# Stage 2: Runtime (geoip.dat kept — geoip:private needs it; geosite.dat dropped — no geosite rules; no certs — inbound is plain gRPC/WS)
+# Stage 2: Runtime (geoip.dat kept — geoip:private needs it; geosite.dat dropped — no geosite rules; no certs — inbound is plain WS)
 FROM alpine:3.20
 
 ARG APK_MIRROR=dl-cdn.alpinelinux.org

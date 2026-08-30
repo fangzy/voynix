@@ -24,7 +24,7 @@ TEMPLATE="${REPO_DIR}/client-config/clash-verge.yaml.template"
 # 输出文件名:可用 OUT_FILE 环境变量覆盖(如 OUT_FILE=clash-verge-sg-tokyo.yaml 生成多份配置)
 OUT_FILE="${OUT_FILE:-clash-verge.yaml}"
 OUTPUT="${REPO_DIR}/client-config/${OUT_FILE}"
-PORT=443  # FC WSS 入口端口(8089 是 gRPC h2 专用,WS 升级会 500)
+PORT=443  # FC WSS 入口端口
 
 # ---------- 定位 aliyun CLI ----------
 if command -v aliyun >/dev/null 2>&1; then

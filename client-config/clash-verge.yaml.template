@@ -54,6 +54,14 @@ proxies:
 
 rules:
   - AND,((NETWORK,udp),(DST-PORT,443)),REJECT
+  # ---- 国外遥测/埋点 REJECT(2026-08-30 本机 mihomo 日志分析;省 proxy 流量)----
+  # 国内遥测域名走 GEOSITE,cn,DIRECT,不消耗 proxy,不在此列
+  - DOMAIN,mobile.events.data.microsoft.com,REJECT
+  - DOMAIN,default.exp-tas.com,REJECT
+  - DOMAIN,analytics.google.com,REJECT
+  - DOMAIN-SUFFIX,googletagmanager.com,REJECT
+  - DOMAIN-SUFFIX,doubleclick.net,REJECT
+  - DOMAIN-SUFFIX,scorecardresearch.com,REJECT
   # ---- MSN/Bing 直连(微软中国服务,不走 proxy)----
   - DOMAIN-SUFFIX,msn.com,DIRECT
   - DOMAIN-SUFFIX,msn.com.cn,DIRECT
@@ -83,6 +91,7 @@ rules:
   - DOMAIN-SUFFIX,netflix.com,Streaming
   - DOMAIN-SUFFIX,google.com,Proxy
   - DOMAIN-SUFFIX,github.com,Proxy
+  - DOMAIN-SUFFIX,b.ai,Proxy
   # ---- 国内域名直连(GEOSITE 按域名判断,解决海外 CDN IP 漏判)----
   - GEOSITE,cn,DIRECT
   # ---- 海外域名走代理(geolocation-!cn 非中国域名)----
