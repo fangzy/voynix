@@ -7,7 +7,7 @@ keep-alive-interval: 30
 tcp-concurrent: true
 tcp-fast-open: true
 unified-delay: true
-find-process-mode: off
+find-process-mode: always
 geodata-mode: true
 profile:
   store-selected: true
@@ -51,6 +51,100 @@ proxies:
 
 # BEGIN_GROUPS
 # END_GROUPS
+
+# ---- 成熟规则集:Loyalsoldier/clash-rules(全量 13 个,每日 6:30 自动构建;jsdelivr CDN 更新延迟约 12h)----
+# 本地缓存于 ./ruleset/;rules 中按序引用,命中即停,无需手维护域名列表
+rule-providers:
+  reject:
+    type: http
+    behavior: domain
+    url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/reject.txt"
+    path: ./ruleset/reject.yaml
+    interval: 86400
+
+  icloud:
+    type: http
+    behavior: domain
+    url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/icloud.txt"
+    path: ./ruleset/icloud.yaml
+    interval: 86400
+
+  apple:
+    type: http
+    behavior: domain
+    url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/apple.txt"
+    path: ./ruleset/apple.yaml
+    interval: 86400
+
+  google:
+    type: http
+    behavior: domain
+    url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/google.txt"
+    path: ./ruleset/google.yaml
+    interval: 86400
+
+  proxy:
+    type: http
+    behavior: domain
+    url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/proxy.txt"
+    path: ./ruleset/proxy.yaml
+    interval: 86400
+
+  direct:
+    type: http
+    behavior: domain
+    url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/direct.txt"
+    path: ./ruleset/direct.yaml
+    interval: 86400
+
+  private:
+    type: http
+    behavior: domain
+    url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/private.txt"
+    path: ./ruleset/private.yaml
+    interval: 86400
+
+  gfw:
+    type: http
+    behavior: domain
+    url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/gfw.txt"
+    path: ./ruleset/gfw.yaml
+    interval: 86400
+
+  tld-not-cn:
+    type: http
+    behavior: domain
+    url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/tld-not-cn.txt"
+    path: ./ruleset/tld-not-cn.yaml
+    interval: 86400
+
+  telegramcidr:
+    type: http
+    behavior: ipcidr
+    url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/telegramcidr.txt"
+    path: ./ruleset/telegramcidr.yaml
+    interval: 86400
+
+  cncidr:
+    type: http
+    behavior: ipcidr
+    url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/cncidr.txt"
+    path: ./ruleset/cncidr.yaml
+    interval: 86400
+
+  lancidr:
+    type: http
+    behavior: ipcidr
+    url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/lancidr.txt"
+    path: ./ruleset/lancidr.yaml
+    interval: 86400
+
+  applications:
+    type: http
+    behavior: classical
+    url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/applications.txt"
+    path: ./ruleset/applications.yaml
+    interval: 86400
 
 rules:
   - AND,((NETWORK,udp),(DST-PORT,443)),REJECT
@@ -96,9 +190,22 @@ rules:
   - DOMAIN-SUFFIX,google.com,Proxy
   - DOMAIN-SUFFIX,github.com,Proxy
   - DOMAIN-SUFFIX,b.ai,Proxy
-  # ---- 国内域名直连(GEOSITE 按域名判断,解决海外 CDN IP 漏判)----
+  # ---- 国内域名直连(GEOSITE 按域名判断,解决海外 CDN IP 漏判;须在 tld-not-cn 之前)----
   - GEOSITE,cn,DIRECT
-  # ---- 海外域名走代理(geolocation-!cn 非中国域名)----
-  - GEOSITE,geolocation-!cn,Proxy
+  # ---- 成熟规则集 Loyalsoldier/clash-rules 全量 13 个(每日自动更新,定义见 rule-providers)----
+  # applications 为 PROCESS-NAME 规则,需 find-process-mode: always 才生效(strict/on 不匹配 provider 内进程规则,2026-08-31 已开 always)
+  - RULE-SET,applications,DIRECT
+  - RULE-SET,private,DIRECT
+  - RULE-SET,reject,REJECT
+  - RULE-SET,icloud,DIRECT
+  - RULE-SET,apple,DIRECT
+  - RULE-SET,google,Proxy
+  - RULE-SET,proxy,Proxy
+  - RULE-SET,direct,DIRECT
+  - RULE-SET,gfw,Proxy
+  - RULE-SET,tld-not-cn,Proxy
+  - RULE-SET,telegramcidr,Proxy
+  - RULE-SET,lancidr,DIRECT
+  - RULE-SET,cncidr,DIRECT
   - GEOIP,CN,DIRECT
   - MATCH,DIRECT

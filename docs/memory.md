@@ -123,3 +123,11 @@ curl -x http://127.0.0.1:7890 https://www.google.com   # 返回 204 即为通
 - **国外**（命中 geolocation-!cn → Proxy，耗代理流量 → REJECT）:微软 `mobile.events.data.microsoft.com`、VS Code A/B 实验 `default.exp-tas.com`（禁用遥测仍每 30 分钟上报）、Google `analytics.google.com` / `googletagmanager.com` / `doubleclick.net`、Comscore `scorecardresearch.com`、Sentry `*.ingest.sentry.io`（错误监控上报，`o<orgid>.ingest.us.sentry.io` 为美国区 ingest 端点；注意 `DOMAIN-SUFFIX,ingest.sentry.io` 匹配不到带区域前缀的形式，直接用 `DOMAIN-SUFFIX,sentry.io`）。
 
 已按此在 `client-config/clash-verge.yaml.template` rules 顶部加 7 条国外遥测 REJECT（置于所有 DIRECT/Proxy 规则之前；2026-08-31 补加 sentry.io）。注意 `mobile.events.data.microsoft.com` 原被 `events.data.microsoft.com` DIRECT 兜住，REJECT 后完全不外发。mihomo 校验需 `-d` 指向含 geosite.dat 的目录（否则联网下载 geodata 卡住）。
+
+### 客户端 rules 改用 Loyalsoldier 规则集(2026-08-31)
+
+模板 rules 尾部由手写 GEOSITE/GEOIP 兜底改为 Loyalsoldier/clash-rules 全量 13 个 rule-providers（jsdelivr CDN，每日 6:30 自动构建，本地缓存 `./ruleset/`）:reject REJECT;apple/icloud/direct/private/lancidr/cncidr DIRECT;google/proxy/gfw/tld-not-cn/telegramcidr Proxy;applications DIRECT（PROCESS-NAME 规则，2026-08-31 起模板 find-process-mode 改为 always 使其生效；注意 strict/on 对 provider 内进程规则不匹配，官方 issue 明确需 always）;结尾 MATCH,DIRECT（黑名单模式）。7 条国外遥测 REJECT、MSN/Bing、系统打点、Apple 证书 CA、Edge/VS Code 直连等手写规则保留为覆盖层（置于规则集之前）。注意:
+
+- `GEOSITE,cn,DIRECT` 保留且须在 `tld-not-cn`（等效原 geolocation-!cn）之前，否则海外 CDN IP 上的国内域名会误走代理
+- reject.txt 大概率已覆盖 googletagmanager/doubleclick/scorecardresearch;遥测覆盖层保留兜底，后续可用 mihomo 日志观察是否有重复命中再精简
+- `mihomo -t` 校验会联网拉取 13 个规则集（jsdelivr），离线或 CDN 不可达时会失败
