@@ -214,7 +214,7 @@ FC_NODES=sg,hk,tokyo ./scripts/gen-client-config.sh
 
 > FC 节点端口必须是 **443**(WSS;FC 网关终止 TLS)。
 
-> 模板内置规则:MSN/Bing 与系统打点(events.data.microsoft.com 等)直连不走代理;国外遥测/埋点域名(`analytics.google.com`、`googletagmanager.com`、`doubleclick.net`、`mobile.events.data.microsoft.com`、`default.exp-tas.com`、`scorecardresearch.com`)在 rules 顶部 REJECT,省代理流量。
+> 模板内置规则:MSN/Bing、系统打点/安全服务(events.data.microsoft.com、smartscreen.microsoft.com 等)、Edge/VS Code 更新(edge.microsoft.com、vscode-cdn.net)及 Apple 服务(apple.com 全后缀,developer.apple.com 例外走代理)默认直连不走代理;国外遥测/埋点域名(`analytics.google.com`、`googletagmanager.com`、`doubleclick.net`、`mobile.events.data.microsoft.com`、`default.exp-tas.com`、`scorecardresearch.com`、`sentry.io`)在 rules 顶部 REJECT,省代理流量。
 
 ### 4. 导入 Clash Verge(正常使用)
 

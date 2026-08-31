@@ -62,6 +62,7 @@ rules:
   - DOMAIN-SUFFIX,googletagmanager.com,REJECT
   - DOMAIN-SUFFIX,doubleclick.net,REJECT
   - DOMAIN-SUFFIX,scorecardresearch.com,REJECT
+  - DOMAIN-SUFFIX,sentry.io,REJECT
   # ---- MSN/Bing 直连(微软中国服务,不走 proxy)----
   - DOMAIN-SUFFIX,msn.com,DIRECT
   - DOMAIN-SUFFIX,msn.com.cn,DIRECT
@@ -72,20 +73,23 @@ rules:
   - DOMAIN,wpad,DIRECT
   - DOMAIN-SUFFIX,msftconnecttest.com,DIRECT
   - DOMAIN-SUFFIX,msftncsi.com,DIRECT
+  - DOMAIN-SUFFIX,smartscreen.microsoft.com,DIRECT
   - DOMAIN-SUFFIX,events.data.microsoft.com,DIRECT
   - DOMAIN-SUFFIX,wns.windows.com,DIRECT
   - DOMAIN-SUFFIX,delivery.mp.microsoft.com,DIRECT
   - DOMAIN-SUFFIX,windowsupdate.com,DIRECT
   - DOMAIN-SUFFIX,update.microsoft.com,DIRECT
   - DOMAIN-SUFFIX,gateway.icloud.com,DIRECT
-  - DOMAIN-SUFFIX,push.apple.com,DIRECT
-  - DOMAIN-SUFFIX,gs-loc.apple.com,DIRECT
-  - DOMAIN-SUFFIX,mesu.apple.com,DIRECT
-  - DOMAIN-SUFFIX,ocsp.apple.com,DIRECT
+  # ---- Apple 服务默认直连(apple.com 全后缀;个别需走代理的例外在其前单独加 Proxy 规则)----
+  - DOMAIN-SUFFIX,developer.apple.com,Proxy
+  - DOMAIN-SUFFIX,apple.com,DIRECT
   - DOMAIN-SUFFIX,digicert.com,DIRECT
   - DOMAIN-SUFFIX,geotrust.com,DIRECT
   - DOMAIN-SUFFIX,comodoca.com,DIRECT
   - DOMAIN-SUFFIX,globalsign.com,DIRECT
+  # ---- Edge/VS Code 更新与 CDN 直连(功能域名,不走 proxy)----
+  - DOMAIN-SUFFIX,edge.microsoft.com,DIRECT
+  - DOMAIN-SUFFIX,vscode-cdn.net,DIRECT
   - DOMAIN-SUFFIX,youtube.com,Streaming
   - DOMAIN-SUFFIX,googlevideo.com,Streaming
   - DOMAIN-SUFFIX,netflix.com,Streaming

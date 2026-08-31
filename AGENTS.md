@@ -201,7 +201,7 @@ Note: CN nodes (cn-*) defined 2026-08 per request; deploying proxy on CN regions
 - Client config `Voynix-Auto` url-test measures `https://github.com/manifest.json` every 300s (tolerance 50ms)
 - Xray v26.2.6 启动告警:WebSocket transport 已标记弃用,官方建议迁移 XHTTP(stream-up H2/H3);现网仍可用
 - SG WS 节点实验结论(2026-08-29):Bearer 鉴权、Cookie/HeaderField 会话亲和均验证过,细节见 docs/memory.md
-- 客户端模板 rules 顶部含 6 条国外遥测 REJECT(2026-08-30 起,省 proxy 流量;国内遥测走 `GEOSITE,cn,DIRECT` 不加规则)——完整域名清单与依据见 `docs/memory.md`
+- 客户端模板 rules 顶部含 7 条国外遥测 REJECT(2026-08-30 起,sentry.io 为 08-31 补加;省 proxy 流量;国内遥测走 `GEOSITE,cn,DIRECT` 不加规则)——完整域名清单与依据见 `docs/memory.md`
 - 2026-08 试验/踩坑细节(WS 实验、全量 WS 切换、Bearer/会话亲和实验、tcpFastOpen、遥测 REJECT 依据)归档于 `docs/memory.md`,本文件仅保留现状事实与约定
 
 ## 维护规则

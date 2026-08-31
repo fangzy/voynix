@@ -120,6 +120,6 @@ curl -x http://127.0.0.1:7890 https://www.google.com   # 返回 204 即为通
 分析本机 Clash Verge 内核日志（`~/Library/Application Support/io.github.clash-verge-rev.clash-verge-rev/service-logs/service/*.log`）发现的遥测上报:
 
 - **国内**（走 GEOSITE cn DIRECT，不耗代理，不加规则）:阿里 SLS XTrace（`proj-xtrace-*.log.aliyuncs.com`，频次最高）、RUM 前端监控（`*.rum.aliyuncs.com`）、mmstat 埋点、字节 `mon/mcs.zijieapi.com`、`mon-va.byteoversea.com`、`mssdk.bytedance.com`、火山 `gator.volces.com`、神策 `*.datasink.sensorsdata.cn`、Edge `browser.events.data.msn.cn`。
-- **国外**（命中 geolocation-!cn → Proxy，耗代理流量 → REJECT）:微软 `mobile.events.data.microsoft.com`、VS Code A/B 实验 `default.exp-tas.com`（禁用遥测仍每 30 分钟上报）、Google `analytics.google.com` / `googletagmanager.com` / `doubleclick.net`、Comscore `scorecardresearch.com`。
+- **国外**（命中 geolocation-!cn → Proxy，耗代理流量 → REJECT）:微软 `mobile.events.data.microsoft.com`、VS Code A/B 实验 `default.exp-tas.com`（禁用遥测仍每 30 分钟上报）、Google `analytics.google.com` / `googletagmanager.com` / `doubleclick.net`、Comscore `scorecardresearch.com`、Sentry `*.ingest.sentry.io`（错误监控上报，`o<orgid>.ingest.us.sentry.io` 为美国区 ingest 端点；注意 `DOMAIN-SUFFIX,ingest.sentry.io` 匹配不到带区域前缀的形式，直接用 `DOMAIN-SUFFIX,sentry.io`）。
 
-已按此在 `client-config/clash-verge.yaml.template` rules 顶部加 6 条国外遥测 REJECT（置于所有 DIRECT/Proxy 规则之前）。注意 `mobile.events.data.microsoft.com` 原被 `events.data.microsoft.com` DIRECT 兜住，REJECT 后完全不外发。mihomo 校验需 `-d` 指向含 geosite.dat 的目录（否则联网下载 geodata 卡住）。
+已按此在 `client-config/clash-verge.yaml.template` rules 顶部加 7 条国外遥测 REJECT（置于所有 DIRECT/Proxy 规则之前；2026-08-31 补加 sentry.io）。注意 `mobile.events.data.microsoft.com` 原被 `events.data.microsoft.com` DIRECT 兜住，REJECT 后完全不外发。mihomo 校验需 `-d` 指向含 geosite.dat 的目录（否则联网下载 geodata 卡住）。
