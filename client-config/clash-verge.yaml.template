@@ -183,6 +183,7 @@ rules:
   - DOMAIN-SUFFIX,globalsign.com,DIRECT
   # ---- Edge/VS Code 更新与 CDN 直连(功能域名,不走 proxy)----
   - DOMAIN-SUFFIX,edge.microsoft.com,DIRECT
+  - DOMAIN-SUFFIX,update.code.visualstudio.com,DIRECT
   - DOMAIN-SUFFIX,vscode-cdn.net,DIRECT
   - DOMAIN-SUFFIX,youtube.com,Streaming
   - DOMAIN-SUFFIX,googlevideo.com,Streaming
