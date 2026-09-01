@@ -31,6 +31,39 @@
   ],
   "outbounds": [
     {
+      "tag": "relay-exit",
+      "protocol": "vless",
+      "settings": {
+        "vnext": [
+          {
+            "address": "${RELAY_EXIT_HOST}",
+            "port": ${RELAY_EXIT_PORT},
+            "users": [
+              {
+                "id": "${UUID}",
+                "encryption": "none",
+                "level": 0
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "${RELAY_EXIT_SECURITY}",
+        "tlsSettings": {
+          "serverName": "${RELAY_EXIT_HOST}"
+        },
+        "wsSettings": {
+          "path": "/${WS_PATH}",
+          "headers": {
+            "Host": "${RELAY_EXIT_HOST}",
+            "Authorization": "Bearer ${FC_BEARER_TOKEN}"
+          }
+        }
+      }
+    },
+    {
       "tag": "direct",
       "protocol": "freedom",
       "settings": {}

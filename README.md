@@ -49,6 +49,10 @@ voynix-xray-hk voynix-xray-sg  voynix-xray-tokyo voynix-xray-frankfurt ...
     ↓              ↓              ↓              ↓
 Internet       Internet       Internet       Internet
 
+中转模式(可选):客户端 → 上海 FC(入口) → 东京 FC(出口) → Internet
+  入口节点 outbound 为 VLESS+WS+TLS 链到出口节点(同一镜像,RELAY_* 环境变量激活);
+  出口节点零改动,同一 inbound 同时服务直连客户端与中转连接
+
 客户端自动切换:Voynix-Auto (url-test) 按延迟选优
 ```
 
@@ -90,6 +94,7 @@ Internet       Internet       Internet       Internet
 - ✅ **运行时配置**: envsubst 模板替换，改配置只需重启容器
 - ✅ **私有 IP 过滤**: 路由规则屏蔽 geoip:private
 - ✅ **FC 多地域**: 6 个海外 + 6 个国内地域节点
+- ✅ **中转模式**: 同一镜像支持入口中转(如上海→东京,`RELAY_*` 环境变量激活),客户端生成中继节点(如 `sh-tokyo`)
 - ✅ **客户端自动切换**: url-test 按延迟自动选优 (Voynix-Auto)
 
 ## 目录结构
@@ -145,6 +150,10 @@ voynix/
 | Variable | 必需 | 说明 |
 |----------|------|------|
 | `FC_NODES` | 是 | 逗号分隔节点键,如 `sg,hk,tokyo`;未设置/为空 → workflow 显式报错 |
+| `RELAY_EXIT_HOST` | 含 shanghai 时必需 | 中转出口节点 fcapp.run 域名(如 `voynix-xray-tokyo-xxx.ap-northeast-1.fcapp.run`) |
+| `RELAY_IMAGE` | 含 shanghai 时必需 | CN 地域 FC 无法直连 docker.io,需加速镜像地址 + digest 固定(见 `.env.example` deploy 节说明) |
+| `RELAY_EXIT_PORT` | 否 | 默认 `443` |
+| `RELAY_EXIT_TLS` | 否 | 默认 `true` |
 
 ### 2. 设置部署范围(FC_NODES)
 
@@ -173,6 +182,7 @@ git push origin main   # 或推送 docker-image/**、fc/** 相关改动
 
 注意事项:
 - 各节点 FC 均使用 Docker Hub 公共镜像拉取(`docker.io/<user>/voynix-xray`),仓库必须设为 **Public**(镜像内不含 UUID 等机密,运行时经环境变量注入)
+- **CN 地域(如 shanghai)FC 无法直连 docker.io**(报 "registry is not reachable"):中转入口节点用 `RELAY_IMAGE` 指定加速镜像地址 + digest 固定(FC 仅在函数创建/更新时拉取镜像,日常冷启动用内部缓存,不依赖镜像站可用性)
 - 国内地域节点已定义于 `fc/s.yaml`,但**代理服务部署国内节点有合规风险,请自行评估**;部分国内地域需向阿里云单独申请开通
 
 ## 客户端配置生成(gen-client-config.sh)
@@ -197,6 +207,10 @@ git push origin main   # 或推送 docker-image/**、fc/** 相关改动
 
 # 也支持 FC_NODES 环境变量或 .env.deploy 中的 FC_NODES(与 CI/部署语义一致,逗号分隔;设置为空/纯空白 → 显式报错)
 FC_NODES=sg,hk,tokyo ./scripts/gen-client-config.sh
+
+# 附加中继节点(客户端只连入口,转发链在服务端完成;入口节点须以中转模式部署)
+# .env client 节配置 RELAY_ROUTES="sh-tokyo=shanghai>tokyo" 后正常生成即可,
+# 生成名为 Voynix-sh-tokyo 的节点(连接参数=入口 shanghai),手动选择使用,不进 Auto 池
 ```
 
 节点选择优先级:**命令行参数 > `FC_NODES` 环境变量 > 全部节点**。`FC_NODES` 未设置时生成全部已部署节点,设置后只生成其中列出的节点(与 CI 部署共用同一套节点键)。

@@ -36,6 +36,7 @@ COPY --from=builder /usr/local/bin/xray /usr/local/bin/xray
 COPY --from=builder /usr/local/bin/geoip.dat /usr/local/bin/geoip.dat
 
 COPY config.template.json /etc/xray/config.template.json
+COPY config.relay.template.json /etc/xray/config.relay.template.json
 COPY entrypoint.sh /entrypoint.sh
 COPY healthcheck.sh /healthcheck.sh
 

@@ -5,6 +5,8 @@
 #   ./scripts/gen-client-config.sh                  # 自动获取 s.yaml 中全部已部署节点
 #   ./scripts/gen-client-config.sh sg hk tokyo      # 仅指定节点(逗号/空格分隔均可)
 #   OUT_FILE=clash-verge-sg-tokyo.yaml ./scripts/gen-client-config.sh sg tokyo  # 自定义输出文件名(生成多份配置)
+#   RELAY_ROUTES="sh-tokyo=shanghai>tokyo" ./scripts/gen-client-config.sh sg hk tokyo shanghai
+#                                                   # 附带生成中继节点(客户端只连入口,转发链在服务端完成)
 #
 # 依赖:
 #   - .env(统一环境变量:common/deploy/client 三节,模板见 .env.example)
@@ -231,11 +233,64 @@ if [ -n "${SCENE_NODES:-}" ]; then
   fi
 fi
 
+# 中继路由(可选):RELAY_ROUTES="sh-tokyo=shanghai>tokyo"(分号分隔多条;格式 name=入口>出口)
+# 中继节点 = 客户端只连入口节点,链路在服务端完成(入口以中转模式部署,outbound 指向出口)
+# 入口节点必须已在本次生成范围且已部署(取其域名);出口节点客户端配置不引用,仅校验 key 拼写
+RELAY_PROXIES=""
+RELAY_MEMBERS=""
+if [ -n "${RELAY_ROUTES:-}" ]; then
+  for route in $(echo "$RELAY_ROUTES" | tr ';' ' '); do
+    route_name=$(echo "$route" | cut -d= -f1)
+    entry_key=$(echo "$route" | cut -d= -f2- | cut -d'>' -f1)
+    exit_key=$(echo "$route" | cut -s -d'>' -f2)
+    if [ -z "$route_name" ] || [ -z "$entry_key" ] || [ -z "$exit_key" ]; then
+      echo "  ⚠️ 跳过格式错误的中继路由 '$route'(格式: name=入口>出口,如 sh-tokyo=shanghai>tokyo)"
+      continue
+    fi
+    entry_line=$(echo "$NODE_LINES" | grep "^$entry_key|" | head -1)
+    if [ -z "$entry_line" ]; then
+      echo "  ⚠️ 跳过中继路由 $route_name: 入口节点 $entry_key 未部署或不在本次生成范围"
+      continue
+    fi
+    if ! python3 -c "
+import yaml, sys
+d = yaml.safe_load(open('$S_YAML'))
+sys.exit(0 if 'voynix-$exit_key' in d['resources'] else 1)
+" 2>/dev/null; then
+      echo "  ⚠️ 中继路由 $route_name 的出口 '$exit_key' 不在 s.yaml,请确认拼写"
+    fi
+    entry_host=$(echo "$entry_line" | cut -d'|' -f4)
+    RELAY_PROXIES="$RELAY_PROXIES
+  # 中继 ${entry_key}→${exit_key}(客户端→入口节点,服务端转发至出口;连接参数=入口节点)
+  - name: \"${CLIENT_PREFIX}-$route_name\"
+    type: vless
+    server: $entry_host
+    port: $PORT
+    uuid: $UUID
+    network: ws
+    tls: true
+    udp: true
+    skip-cert-verify: true
+    servername: $entry_host
+    client-fingerprint: chrome
+    ws-opts:
+      path: /ws
+      headers:
+        Authorization: Bearer $FC_BEARER_TOKEN
+"
+    RELAY_MEMBERS="$RELAY_MEMBERS
+      - ${CLIENT_PREFIX}-$route_name"
+    echo "  🔗 中继路由: ${CLIENT_PREFIX}-$route_name = $entry_key → $exit_key"
+  done
+  PROXIES="$PROXIES$RELAY_PROXIES"
+fi
+
 # 注意:变量名不用 GROUPS(bash 中是只读数组,赋值会静默失败)
 # 有场景时精简结构:去掉全量 LB,Proxy/Streaming 指向 Scene;无场景时保持原结构(Auto+LB)
+# 中继节点(RELAY_MEMBERS)手动选择,不进 Auto/LB url-test 池
 if [ -n "$SCENE_REF" ]; then
   LB_BLOCK=""
-  PROXY_MEMBERS="$SCENE_REF
+  PROXY_MEMBERS="$SCENE_REF$RELAY_MEMBERS
       - DIRECT"
   STREAMING_MEMBERS="
       - ${CLIENT_PREFIX}-Scene
@@ -252,7 +307,7 @@ else
 "
   PROXY_MEMBERS="
       - ${CLIENT_PREFIX}-Auto
-      - ${CLIENT_PREFIX}-LB
+      - ${CLIENT_PREFIX}-LB$RELAY_MEMBERS
       - DIRECT"
   STREAMING_MEMBERS="
       - ${CLIENT_PREFIX}-Auto
@@ -295,7 +350,7 @@ PYEOF
 
 echo ""
 echo "Generated: $OUTPUT"
-echo "  节点数: $(echo "$NODE_LINES" | wc -l | tr -d ' ')"
+echo "  节点数: $(echo "$NODE_LINES" | wc -l | tr -d ' ')$(if [ -n "$RELAY_MEMBERS" ]; then echo " + 中继 $(echo "$RELAY_MEMBERS" | grep -c '^ *- ' | tr -d ' ') 条"; fi)"
 echo "  端口:   $PORT (WSS)"
 echo "  UUID:   $UUID"
 echo "  传输:   WebSocket(path /ws)+ Bearer 鉴权"

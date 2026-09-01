@@ -51,6 +51,12 @@ fail() { echo "错误: $1"; exit 1; }
 # s.yaml 中的 ${env(...)} 需要这些变量
 export UUID IMAGE_NAME FC_BEARER_TOKEN WS_PATH
 export DOCKERHUB_USERNAME
+# 中转模式(仅 shanghai 等 relay 入口节点引用;RELAY_EXIT_HOST 空则该节点按直连模式部署)
+export RELAY_EXIT_HOST="${RELAY_EXIT_HOST:-}"
+export RELAY_EXIT_PORT="${RELAY_EXIT_PORT:-443}"
+export RELAY_EXIT_TLS="${RELAY_EXIT_TLS:-true}"
+# CN 地域镜像引用(加速镜像 + digest 固定,docker.io 直连不可达)
+export RELAY_IMAGE="${RELAY_IMAGE:-}"
 
 # ---------- 安装/检查 Serverless Devs ----------
 if ! command -v s >/dev/null 2>&1; then
@@ -106,6 +112,15 @@ if [ "$NODES" != "both" ]; then
     esac
   done
 fi
+
+# shanghai 为中转入口节点:必须提供 RELAY_EXIT_HOST(出口节点 fcapp.run 域名)与 RELAY_IMAGE
+# (CN 地域 FC 无法直连 docker.io,镜像走加速镜像 + digest 固定,见 .env deploy 节)
+case " $NODES " in
+  *" shanghai "*|*" both "*)
+    [ -n "$RELAY_EXIT_HOST" ] || fail "RELAY_EXIT_HOST 未设置($ENV_FILE deploy 节)——shanghai 以中转模式部署,需指向出口节点域名(如 voynix-xray-tokyo-xxx.ap-northeast-1.fcapp.run,可用 gen-client-config.sh 查询)"
+    [ -n "$RELAY_IMAGE" ] || fail "RELAY_IMAGE 未设置($ENV_FILE deploy 节)——CN 地域 FC 无法直连 docker.io,需加速镜像地址(digest 固定)"
+    ;;
+esac
 
 # ---------- 部署 FC ----------
 cd "$FC_DIR"

@@ -131,3 +131,27 @@ curl -x http://127.0.0.1:7890 https://www.google.com   # 返回 204 即为通
 - `GEOSITE,cn,DIRECT` 保留且须在 `tld-not-cn`（等效原 geolocation-!cn）之前，否则海外 CDN IP 上的国内域名会误走代理
 - reject.txt 大概率已覆盖 googletagmanager/doubleclick/scorecardresearch;遥测覆盖层保留兜底，后续可用 mihomo 日志观察是否有重复命中再精简
 - `mihomo -t` 校验会联网拉取 13 个规则集（jsdelivr），离线或 CDN 不可达时会失败
+
+## 中转模式 shanghai→tokyo（2026-09-01）
+
+### 实现与实测
+
+同一镜像双角色：`RELAY_EXIT_HOST` 非空 → 入口中转（新增 `config.relay.template.json`，outbound 第一条为 VLESS+WS(+TLS) 指向出口、ws headers 带 `Authorization: Bearer` 过出口网关鉴权，routing 默认走它；outbound 自身到出口的连接不经过 routing，`geoip:private` 封禁不影响）；未设 → 直连出口（原模板）。出口节点（tokyo）零改动，同一 inbound 同时服务直连客户端与上海的中转连接。本地联调：`docker compose --profile relay up -d`（exit 8089 + relay 8090，明文 WS + TFO=false），xray 客户端容器双 socks 对照 + 停 relay 隔离验证。
+
+实测数据（FC 生产，客户端在本机武汉电信）：
+
+- 裸 WS 握手：shanghai/tokyo 均 101
+- delay（mihomo，google generate_204）：tokyo 直连 60ms、sh-tokyo 中继 100-106ms、shanghai 入口单独测 101ms（=中继同路径）
+- 端到端出口 IP：47.74.7.201 / 47.74.41.86 / 8.209.246.59（均 Japan Tokyo Alibaba，多实例出口 IP 池）
+- 客户端配置：`RELAY_ROUTES="sh-tokyo=shanghai>tokyo"`（.env client 节）生成 `Voynix-sh-tokyo`（连接参数=入口 shanghai），列于 Proxy/Scene select 组手动选择，不进 Auto url-test 池
+
+### 踩坑
+
+1. **Xray v26.2.6 移除 `tlsSettings.allowInsecure`**（强制迁移 pinnedPeerCertSha256）：relay 模板带它 → 容器启动即崩（FC 报 412 Precondition Failed，函数日志见 "Failed to build TLS config"）；本地 TLS=false 走 none 分支不触发，仅生产暴露。fcapp.run 证书为公共 CA 有效（curl 不带 -k 即 101），outbound 用 `serverName` 正常校验即可。
+2. **FC 保留 `FC_` 前缀环境变量名**：容器 env 写 `FC_BEARER_TOKEN` → deploy 报 400 "The environment variable name 'FC_BEARER_TOKEN' is reserved"。s.yaml 注入改名 `RELAY_BEARER_TOKEN`，entrypoint 回退取值。
+3. **CN 地域 FC 拉不到 docker.io**：deploy 报 400 "registry is not reachable"（确定性复现，海外地域正常）。方案：`RELAY_IMAGE=docker.1panel.live/<user>/voynix-xray@sha256:<digest>`（digest 与 Docker Hub 一致防篡改；FC 仅函数创建/更新时拉镜像，冷启动用内部缓存，镜像站只影响部署窗口）。镜像站普查：DaoCloud docker.m.daocloud.io 白名单外不代理；docker.1ms.run 判"可能违反相关地区法律"拒绝代理类仓库（hub.rat.dev 重定向到它）；xuanyuan 需付费。**长期正解是开通 ACR 个人版**（免费）：账号当前 USER_NOT_REGISTERED（cn-shanghai/hangzhou/beijing/shenzhen/hongkong/ap-southeast-1 均未注册，开通需控制台一次性点击）；个人版老 ROA API 可手签调用（`acs AKID:signature`，HMAC-SHA1 **裸 SK**（不加 "&"，与 OSS 不同），StringToSign=METHOD\nAccept\nContent-MD5\nContent-Type\nDate\nPath，Date 格式 `%a, %d %b %Y %H:%M:%S GMT`）；aliyun CLI 3.4 的 cr 产品是 ACR EE API（ListNamespace 需 InstanceId），个人版 API 不内置，插件 aliyun-cli-cr 亦无。
+4. **/bin/sh 变量后紧跟多字节字符会吞字节**：`"$entry_key→tokyo"` 中 bash-posix 把 `→` 首字节 e2 并入变量名 → 查 `entry_key\xe2` 得空、箭头只剩 `86 92` → env 传给 python 变 surrogates（UnicodeEncodeError: surrogates not allowed）。zsh 无此问题（所以文件内容校验看不出）。**多字节字符前必须 `${var}` 花括号**。
+5. **zsh `$VAR:latest` 会被解析为 `:l` 小写修饰符**：`"$IMAGE_NAME:latest"` → `voynix-xray`+`atest` = `voynix-xrayatest`，crane 误推到自动创建的仓库 `fangzy0823/voynix-xrayatest`（Docker Hub PAT 不能调 Hub API 删除，401 "cannot be used as a bearer"，需网页端手动删除）。**zsh 下 `$VAR` 后跟 `:` 必须用 `${VAR}`**。
+6. shanghai FC URL 前缀是 `voynix-shanghai-vyqovfqvfs`（函数名一致）；tokyo 实际前缀是 `voynix-ay-tokyo-xtmohqxugy`（URL 派生名与函数名 voynix-xray-tokyo 不完全一致，勿按函数名猜域名，以 GetTrigger urlInternet 为准）。
+7. Clash Verge Rev 的 mixed-port 由 Verge 设置覆盖（本机 7897，非模板 7890）；runtime external-controller 为空，API 走 unix socket：`curl --unix-socket /tmp/verge/verge-mihomo.sock http://localhost/proxies/<name>/delay`。更新本机配置流程：覆盖 `profiles/LmNYOQCAwXHd.yaml`（先 .bak 时间戳备份）→ osascript 重启 Clash Verge → socket API 验证。
+8. FC HTTP 触发器首次请求冷启动较慢（镜像已缓存仍需拉起实例），握手重试带间隔（实测 redeploy 后首次即 101，之前 412 是配置崩溃非冷启动）。

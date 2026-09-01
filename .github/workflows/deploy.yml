@@ -72,6 +72,7 @@ jobs:
       - name: Validate FC_NODES
         env:
           FC_NODES: ${{ vars.FC_NODES }}
+          RELAY_EXIT_HOST: ${{ vars.RELAY_EXIT_HOST }}
         run: |
           # 空/空白检测
           if [ -z "${FC_NODES//[[:space:]]/}" ]; then
@@ -87,6 +88,21 @@ jobs:
               *) echo "❌ 未知节点: '$n'(FC_NODES 含无效节点键)"; exit 1 ;;
             esac
           done
+          # shanghai 为中转入口节点,必须提供 RELAY_EXIT_HOST / RELAY_IMAGE(Variables)
+          case " $(echo "$FC_NODES" | tr ',' ' ') " in
+            *" shanghai "*)
+              if [ -z "$RELAY_EXIT_HOST" ]; then
+                echo "❌ FC_NODES 含 shanghai(中转入口),但 Variables 未设置 RELAY_EXIT_HOST"
+                echo "请配置: Variables → RELAY_EXIT_HOST = 出口节点域名(如 voynix-xray-tokyo-xxx.ap-northeast-1.fcapp.run)"
+                exit 1
+              fi
+              if [ -z "$RELAY_IMAGE" ]; then
+                echo "❌ FC_NODES 含 shanghai,但 Variables 未设置 RELAY_IMAGE"
+                echo "(CN 地域 FC 无法直连 docker.io;加速镜像地址 + digest 固定,见 fc/s.yaml 注释)"
+                exit 1
+              fi
+              ;;
+          esac
           echo "✅ FC_NODES 校验通过: $FC_NODES"
 
       - name: Check required secrets (deploy-fc)
@@ -139,6 +155,11 @@ jobs:
           WS_PATH: ${{ secrets.WS_PATH || 'ws' }}
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           IMAGE_NAME: ${{ secrets.IMAGE_NAME || 'voynix-xray' }}
+          # 中转变量(仅 shanghai 引用;域名非机密,放 Variables)
+          RELAY_EXIT_HOST: ${{ vars.RELAY_EXIT_HOST }}
+          RELAY_EXIT_PORT: ${{ vars.RELAY_EXIT_PORT || '443' }}
+          RELAY_EXIT_TLS: ${{ vars.RELAY_EXIT_TLS || 'true' }}
+          RELAY_IMAGE: ${{ vars.RELAY_IMAGE }}
         run: |
           cd fc
           for n in $(echo "$FC_NODES" | tr ',' ' '); do

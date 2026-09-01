@@ -1,4 +1,5 @@
 services:
+  # 直连出口模式(生产默认):客户端 → 本容器 → Internet
   voynix-xray:
     build:
       context: ./docker-image
@@ -10,4 +11,29 @@ services:
     environment:
       - UUID=${UUID}
       - WS_PATH=${WS_PATH:-ws}
+      # 本地 Docker TFO 踩坑:qemu 下连接重置,联调一律关闭(见 docs/memory.md)
+      - TFO=false
+    restart: unless-stopped
+
+  # 中转入口模式(--profile relay 启用):outbound 链到上面的直连容器
+  #   docker compose --profile relay up -d --build
+  # 模拟生产 shanghai→tokyo:入站明文 WS 8090 → 出站明文 WS voynix-xray:8089
+  voynix-xray-relay:
+    profiles: ["relay"]
+    build:
+      context: ./docker-image
+      dockerfile: Dockerfile
+      args:
+        APK_MIRROR: mirrors.aliyun.com
+    ports:
+      - "8090:8089"
+    environment:
+      - UUID=${UUID}
+      - WS_PATH=${WS_PATH:-ws}
+      - TFO=false
+      - RELAY_EXIT_HOST=voynix-xray
+      - RELAY_EXIT_PORT=8089
+      - RELAY_EXIT_TLS=false
+    depends_on:
+      - voynix-xray
     restart: unless-stopped
