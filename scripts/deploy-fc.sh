@@ -194,6 +194,17 @@ else
   NODES="both"
 fi
 
+# 部署集合 = FC_NODES ∪ RELAY_ENTRIES 声明的中转入口(声明即部署;显式单节点 TARGET 除外,保持精确部署)
+if [ "$NODES" != "both" ] && [ -z "$TARGET" ] && [ -n "$RELAY_EXIT_MAP" ]; then
+  for line in $RELAY_EXIT_MAP; do
+    entry_key=$(echo "$line" | cut -d'|' -f1)
+    case " $NODES " in
+      *" $entry_key "*) ;;
+      *) NODES="$NODES $entry_key"; echo "[deploy-fc] 中转入口 $entry_key 自动加入部署范围(RELAY_ENTRIES 声明)";;
+    esac
+  done
+fi
+
 if [ "$NODES" != "both" ]; then
   for key in $NODES; do
     case " $VALID_KEYS " in

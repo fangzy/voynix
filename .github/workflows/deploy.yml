@@ -206,6 +206,9 @@ jobs:
               meta=$(python3 -c "
           import yaml, sys
           d = yaml.safe_load(open('fc/s.yaml'))
+          if not d['resources'].get('voynix-$ek'):
+              print(f'ERROR: 中转入口 $ek 不在 fc/s.yaml(检查 RELAY_ENTRIES 入口拼写/别名)', file=sys.stderr)
+              sys.exit(1)
           res = d['resources'].get('voynix-$ex')
           if not res:
               print(f'ERROR: 出口节点 $ex 不在 fc/s.yaml(检查 RELAY_ENTRIES 出口拼写/别名)', file=sys.stderr)
@@ -228,8 +231,16 @@ jobs:
               relay_map="$relay_map $ek|$(echo "$url" | sed 's|https://||; s|/$||')"
             done
           fi
+          # 部署集合 = FC_NODES ∪ RELAY_ENTRIES 声明的中转入口(声明即部署;否则入口声明了却不在 FC_NODES 就不会被部署)
+          DEPLOY_NODES=$(echo "$FC_NODES" | tr ',' ' ')
+          for ek in $(echo "$relay_map" | tr ' ' '\n' | cut -d'|' -f1); do
+            case " $DEPLOY_NODES " in
+              *" $ek "*) ;;
+              *) DEPLOY_NODES="$DEPLOY_NODES $ek"; echo "🔗 中转入口 $ek 自动加入部署范围(RELAY_ENTRIES 声明)";;
+            esac
+          done
           need_image=""
-          for n in $(echo "$FC_NODES" | tr ',' ' '); do
+          for n in $DEPLOY_NODES; do
             echo "$relay_map" | grep -q "^$n|" && need_image=1
           done
           if [ -n "$need_image" ]; then
@@ -243,7 +254,7 @@ jobs:
             echo "🔍 CN 加速镜像(自动查询 digest): ${RELAY_IMAGE}"
           fi
           cd fc
-          for n in $(echo "$FC_NODES" | tr ',' ' '); do
+          for n in $DEPLOY_NODES; do
             relay_exit=$(echo "$relay_map" | tr ' ' '\n' | grep "^$n|" | head -1 | cut -d'|' -f2)
             if [ -n "$relay_exit" ]; then
               export RELAY_EXIT_HOST="$relay_exit"
