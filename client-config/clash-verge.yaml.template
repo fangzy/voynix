@@ -189,8 +189,8 @@ rules:
   - DOMAIN-SUFFIX,edge.microsoft.com,DIRECT
   - DOMAIN-SUFFIX,update.code.visualstudio.com,DIRECT
   - DOMAIN-SUFFIX,vscode-cdn.net,DIRECT
-  # ---- OHTTP 隐私中继直连(2026-09-02;Fastly 中继,直连实测可达,不损失隐私,省代理流量)----
-  - DOMAIN-SUFFIX,ohttp-relay1.fastly-edge.com,DIRECT
+  # ---- OHTTP 隐私中继直连(fastly-edge.com 的 ohttp-relay* 系,含 ohttp-relay1 与 Chrome Safe Browsing 中继;直连实测可达,不损失隐私,省代理流量)----
+  - DOMAIN-REGEX,^ohttp-relay.*\.fastly-edge\.com$,DIRECT
   - DOMAIN-SUFFIX,youtube.com,Proxy
   - DOMAIN-SUFFIX,googlevideo.com,Proxy
   - DOMAIN-SUFFIX,netflix.com,Proxy
