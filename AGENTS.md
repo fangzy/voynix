@@ -45,9 +45,9 @@ Xray-core Docker proxy service using VLESS + WebSocket + TLS,HTTP 触发器 Bear
 | Update Docker build | `docker-image/Dockerfile` | Multi-stage Alpine 3.20 build |
 | Update CI/CD | `.github/workflows/deploy.yml` | GitHub Actions (build+push+FC deploy) |
 | Client configuration | `client-config/clash-verge.yaml.template` | mihomo/Clash template (dual-node, url-test;rules 用 Loyalsoldier 13 规则集,MATCH,DIRECT) |
-| FC deployment config | `fc/s.yaml` | Serverless Devs, regions + images per node;shanghai=中转入口(RELAY_* env + RELAY_IMAGE 镜像) |
-| Generate client config | `scripts/gen-client-config.sh` | Auto-fetch FC node domains (aliyun fc GetTrigger); filter via args or `FC_NODES`; `RELAY_ROUTES` 生成中继节点 |
-| Local FC deploy | `scripts/deploy-fc.sh` | Reads 根目录 .env;部署 shanghai 时校验 RELAY_EXIT_HOST/RELAY_IMAGE |
+| FC deployment config | `fc/s.yaml` | Serverless Devs, regions + images per node;shanghai/shenzhen=中转入口(RELAY_ENTRIES 声明,镜像 digest 自动查询) |
+| Generate client config | `scripts/gen-client-config.sh` | Auto-fetch FC node domains (aliyun fc GetTrigger); filter via args or `FC_NODES`; `RELAY_ENTRIES` 生成中继节点 |
+| Local FC deploy | `scripts/deploy-fc.sh` | Reads 根目录 .env;`RELAY_ENTRIES`(入口短码>出口短码,单字段)声明的中转入口自动查出口域名并逐个注入 |
 | Runtime entrypoint | `docker-image/entrypoint.sh` | envsubst + Xray start;`RELAY_EXIT_HOST` 非空→relay 模板,否则直连模板 |
 | Health check | `docker-image/healthcheck.sh` | Docker HEALTHCHECK script (pidof xray) |
 | Compose config | `docker-compose.yml` | 根目录,Local dev(`--profile relay` 附带中转链联调容器) |
@@ -71,13 +71,13 @@ Xray-core Docker proxy service using VLESS + WebSocket + TLS,HTTP 触发器 Bear
 | `TFO` | No | `true` | inbound sockopt tcpFastOpen(生产 true;本地 Docker qemu 下需 `false`,见 docs/memory.md) |
 
 Deploy 节变量(镜像到 GitHub Secret 供 CI):
-`DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`, `ALIBABA_CLOUD_ACCOUNT_ID`, `ALIBABA_CLOUD_ACCESS_KEY_ID`, `ALIBABA_CLOUD_ACCESS_KEY_SECRET`, `FC_NODES`, `IMAGE_NAME`, `RELAY_EXIT_HOST`(中转出口域名,如 tokyo), `RELAY_EXIT_PORT`(443), `RELAY_EXIT_TLS`(true), `RELAY_IMAGE`(CN 地域加速镜像地址+digest 固定,FC 无法直连 docker.io)。Client 节:`SCENE_NODES`(场景组)、`RELAY_ROUTES`(中继路由,如 `sh-tokyo=shanghai>tokyo`)。
+`DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`, `ALIBABA_CLOUD_ACCOUNT_ID`, `ALIBABA_CLOUD_ACCESS_KEY_ID`, `ALIBABA_CLOUD_ACCESS_KEY_SECRET`, `FC_NODES`, `IMAGE_NAME`, `RELAY_ENTRIES`(中转入口配置,格式 `入口短码>出口短码`(如 sh>hk),出口 fcapp.run 域名部署时自动查询;一个 .env 同时部署多个中转服务器), `RELAY_EXIT_PORT`(443), `RELAY_EXIT_TLS`(true);RELAY_IMAGE 无需配置(deploy-fc.sh 自动查询 Docker Hub digest 构造,镜像站前缀可 `RELAY_IMAGE_MIRROR` 覆盖)。Client 节:`SCENE_NODES`(场景组);中继节点由 deploy 节 `RELAY_ENTRIES` 同源驱动(2026-09-02 起 RELAY_ROUTES 已并入)。
 
 ### Relay Mode(中转模式)
 
 - 同一镜像两种角色:`RELAY_EXIT_HOST` 非空 → 入口中转(outbound=VLESS+WS+TLS 指向出口,带 `Authorization: Bearer` 头过出口 FC 网关鉴权);未设 → 直连出口(freedom)
 - 出口节点(tokyo)**零改动**:同一 inbound 同时服务直连客户端与中转连接
-- s.yaml 中入口节点(shanghai)整块覆盖 `environmentVariables`(YAML 锚点浅合并)+ `customContainerConfig.image`(走 `RELAY_IMAGE` 加速镜像)
+- s.yaml 中入口节点(shanghai/shenzhen)整块覆盖 `environmentVariables`(YAML 锚点浅合并)+ `customContainerConfig.image`(CN 加速镜像,digest 由 deploy-fc.sh 自动查询)
 - ⚠️ FC 平台保留 `FC_` 前缀环境变量名——容器内 token 变量须叫 `RELAY_BEARER_TOKEN`(entrypoint 回退取值)
 
 ### Xray-core Version
@@ -129,17 +129,17 @@ docker run -d -p 8089:8089 -e UUID=$(uuidgen) voynix-xray:latest
 ./scripts/gen-client-config.sh            # all deployed nodes (skips undeployed)
 ./scripts/gen-client-config.sh sg hk      # only sg + hk (args take priority)
 FC_NODES=sg,hk,tokyo ./scripts/gen-client-config.sh   # same filter via env (blank → error)
-# 场景组(可选):生成 Company(SG+Tokyo)/Home(HK+Tokyo) 各自 Auto+LB 子组 + 顶层 Voynix-Scene 切换
-# 8 组结构:Auto(全量)+ Company-Auto/LB + Home-Auto/LB + Scene(列四组+全量Auto)+ Proxy + Streaming(有场景时去掉全量 LB)
+# 场景组(可选):生成 Company(SG+Tokyo)/Home(HK+Tokyo) 各一个 url-test 组(15 分钟测速)+ Voynix-Scene 切换
+# 组结构:Company/Home(url-test 900s)→ Relay(select,有中继时)→ Scene(select,可选中继)/ Proxy-Download(select,下载专用)+ Proxy(2026-09-02 起无 Streaming,流媒体规则并入 Proxy)
 SCENE_NODES="company=sg,tokyo;home=hk,tokyo" ./scripts/gen-client-config.sh
-# 中继节点(可选,RELAY_ROUTES 在 .env client 节):生成 Voynix-sh-tokyo(连接参数=入口 shanghai,手动选择,不进 Auto 池)
-RELAY_ROUTES="sh-tokyo=shanghai>tokyo" ./scripts/gen-client-config.sh sg hk tokyo shanghai
+# 中继节点(可选,RELAY_ENTRIES 驱动,deploy 节):生成 Voynix-sh-hk 等(连接参数=入口节点,进 Voynix-Relay 手动选择)
+RELAY_ENTRIES="sh>hk" ./scripts/gen-client-config.sh sg hk tokyo shanghai
 
 # Verify with mihomo(需 geodata:macOS 本机用 -d 指向 Clash Verge 数据目录,否则尝试联网下载 geodata 会卡住)
 mihomo -t -d "$HOME/Library/Application Support/io.github.clash-verge-rev.clash-verge-rev" -f client-config/clash-verge.yaml
 
 # Local FC deploy (build+push+deploy; or deploy-only / single region)
-# 需先 cp .env.example .env 并填写 deploy 节凭据;shanghai 需 RELAY_EXIT_HOST + RELAY_IMAGE(脚本校验)
+# 需先 cp .env.example .env 并填写 deploy 节凭据;`RELAY_ENTRIES` 声明的中转入口(如 shanghai/shenzhen)部署时自动注入各自出口
 ./scripts/deploy-fc.sh               # all nodes
 ./scripts/deploy-fc.sh build hk      # HK only
 ./scripts/deploy-fc.sh deploy tokyo    # deploy-only Tokyo
@@ -151,7 +151,7 @@ docker compose --profile relay up -d --build
 # Push to Docker Hub from CN network (Docker Desktop proxy blocks docker push):
 docker save voynix-xray:latest -o /tmp/voynix.tar
 crane push /tmp/voynix.tar docker.io/<user>/voynix-xray:latest
-# 推送后更新 .env 的 RELAY_IMAGE digest(crane digest docker.io/<user>/voynix-xray:latest)再部署 shanghai
+# 推送后直接部署:deploy-fc.sh 自动查询 Docker Hub 最新 digest(无需手动更新镜像地址)
 
 # Check container health
 docker compose ps
@@ -168,7 +168,7 @@ docker compose ps
 ## ARCHITECTURE
 
 ```
-Client (mihomo/Clash, Voynix-Auto url-test auto-switch)
+Client (mihomo/Clash, Voynix-Scene 场景切换 + Voynix-Relay 中转下载)
     |
     | VLESS + WS + TLS (fcapp.run:443 WSS, Bearer 鉴权, skip-cert-verify)
     ├──────────────────────┬──────────────────────┬───────────────────┐
@@ -181,14 +181,18 @@ Docker Hub public img   Docker Hub public img   RELAY_IMAGE 镜像
     ↓                      ↓                      ↓
 Internet               Internet               Internet
                           ▲
-        中转链路(可选): Client → Shanghai FC → Tokyo FC → Internet(出口 IP=东京)
+中转模式(2026-09-02,RELAY_ENTRIES 声明,双入口):
+  Client ─ VLESS+WS+TLS(Bearer) ─→ Shanghai FC(入口) ─→ HK FC(出口) ─→ Internet   [Voynix-sh-hk]
+  Client ─ VLESS+WS+TLS(Bearer) ─→ Shenzhen FC(入口) ─→ SG FC(出口) ─→ Internet   [Voynix-sz-sg]
+  入口=RELAY_ENTRIES("sh>hk;sz>sg"),deploy-fc.sh 自动查询出口域名,容器 outbound VLESS+WS+TLS 经 FC 网关 443 链到出口;
+  客户端中继节点进 Voynix-Relay(手动选择),外网下载域名走 Proxy-Download(规则见模板)
 ```
 
-默认单跳直连;中转入口节点(shanghai)默认全部流量链到出口节点(tokyo)。Tokyo 同一 inbound 同时服务直连客户端与中转连接(零改动)。
+默认单跳直连;中转入口(shanghai→hk、shenzhen→sg)由 RELAY_ENTRIES 声明,deploy-fc.sh 逐个注入出口;出口节点(HK/SG)零改动,同一 inbound 同时服务直连客户端与中转连接。
 
 ## NODES
 
-All nodes use Docker Hub public image `docker.io/<user>/voynix-xray`; deployment scope is controlled by the `FC_NODES` repo variable (comma-separated, e.g. `sg,hk,tokyo`). Empty/空白/未设置 → CI 显式报错; unknown keys also fail fast. `fc/s.yaml` defines 12 nodes (6 overseas + 6 CN, YAML anchor `&node-base` for shared props). Only FC 3.0 regions supporting custom-container images are listed (verified 2026-08 against official supported-regions icons; Seoul/KL/Jakarta/Bangkok/London/Qingdao/Wulanchabu/Chengdu excluded). **已部署(2026-09-01):sg / hk / tokyo(直连出口)/ shanghai(中转入口→tokyo)**;CI repo 变量 FC_NODES 仍为 sg,hk,tokyo(本地 .env 已加 shanghai)。
+All nodes use Docker Hub public image `docker.io/<user>/voynix-xray`; deployment scope is controlled by the `FC_NODES` repo variable (comma-separated, e.g. `sg,hk,tokyo`). Empty/空白/未设置 → CI 显式报错; unknown keys also fail fast. `fc/s.yaml` defines 12 nodes (6 overseas + 6 CN, YAML anchor `&node-base` for shared props). Only FC 3.0 regions supporting custom-container images are listed (verified 2026-08 against official supported-regions icons; Seoul/KL/Jakarta/Bangkok/London/Qingdao/Wulanchabu/Chengdu excluded). **已部署(2026-09-02):sg / hk / tokyo(直连出口)/ shanghai(中转入口→hk)/ shenzhen(中转入口→sg)**;CI repo 变量 FC_NODES 仍为 sg,hk,tokyo(本地 .env 已加 shanghai、shenzhen)。
 
 | Key | Region | Function | Client host (fcapp.run:443 WSS) |
 |-----|--------|----------|------------------------------|
@@ -203,7 +207,7 @@ All nodes use Docker Hub public image `docker.io/<user>/voynix-xray`; deployment
 | `beijing` | cn-beijing | `voynix-xray-beijing` | `voynix-xray-beijing-*.cn-beijing.fcapp.run` |
 | `zhangjiakou` | cn-zhangjiakou | `voynix-xray-zhangjiakou` | `voynix-xray-zhangjiakou-*.cn-zhangjiakou.fcapp.run` |
 | `huhehaote` | cn-huhehaote | `voynix-xray-huhehaote` | `voynix-xray-huhehaote-*.cn-huhehaote.fcapp.run` |
-| `shenzhen` | cn-shenzhen | `voynix-xray-shenzhen` | `voynix-xray-shenzhen-*.cn-shenzhen.fcapp.run` |
+| `shenzhen` | cn-shenzhen | `voynix-xray-shenzhen` | `voynix-xray-shenzhen-*.cn-shenzhen.fcapp.run`(**中转入口**,出口→sg) |
 
 Note: CN nodes (cn-*) defined 2026-08 per request; deploying proxy on CN regions carries compliance risk — user's decision. Old SG function (`proxy_service$xray-exit`, ACR image) was deleted 2026-08 and replaced by `voynix-xray-sg` (Docker Hub image, same spec as HK).
 
@@ -218,13 +222,13 @@ Note: CN nodes (cn-*) defined 2026-08 per request; deploying proxy on CN regions
 - No nginx. FC gateway terminates TLS; Xray inbound is plain WS (生产默认,无 TLS)
 - No test suite. Infrastructure project
 - Runtime envsubst means config changes only need a container restart, not a rebuild
-- Client config `Voynix-Auto` url-test measures `https://github.com/manifest.json` every 300s (tolerance 50ms)
+- Client config 场景组(Voynix-Company/Home)url-test 每 15 分钟(900s)测速 `https://github.com/manifest.json`(tolerance 50ms);Voynix-Scene 切换场景,Voynix-Relay+Proxy-Download 供外网下载走中转
 - Xray v26.2.6 启动告警:WebSocket transport 已标记弃用,官方建议迁移 XHTTP(stream-up H2/H3);现网仍可用
 - SG WS 节点实验结论(2026-08-29):Bearer 鉴权、Cookie/HeaderField 会话亲和均验证过,细节见 docs/memory.md
-- 客户端模板 rules 采用 Loyalsoldier/clash-rules 全量 13 个 rule-providers(2026-08-31 起,jsdelivr CDN 每日 6:30 自动构建;reject REJECT、apple/icloud/direct/private/lancidr/cncidr DIRECT、google/proxy/gfw/tld-not-cn/telegramcidr Proxy,结尾 MATCH,DIRECT 黑名单兜底);7 条国外遥测 REJECT 与 MSN/Bing/系统打点/Apple 证书 CA 直连等保留为顶部覆盖层(国内遥测走 `GEOSITE,cn,DIRECT` 不加规则)——细节见 `docs/memory.md`
+- 客户端模板 rules 采用 Loyalsoldier/clash-rules 全量 13 个 rule-providers(2026-08-31 起,jsdelivr CDN 每日 6:30 自动构建;reject REJECT、apple/icloud/direct/private/lancidr/cncidr DIRECT、google/proxy/gfw/tld-not-cn/telegramcidr Proxy,结尾 MATCH,DIRECT 黑名单兜底);7 条国外遥测 REJECT 与 MSN/Bing/系统打点/Apple 证书 CA 直连等保留为顶部覆盖层(国内遥测走 `GEOSITE,cn,DIRECT` 不加规则),外网下载域名(release-assets/objects/codeload.github.com、dl.google.com、download.jetbrains.com)走 Proxy-Download(2026-09-02)——细节见 `docs/memory.md`
 - 2026-08 试验/踩坑细节(WS 实验、全量 WS 切换、Bearer/会话亲和实验、tcpFastOpen、遥测 REJECT 依据)归档于 `docs/memory.md`,本文件仅保留现状事实与约定
-- 中转模式(2026-09-01 上线,shanghai→tokyo):实测 sh-tokyo delay ~100-106ms(tokyo 直连 60ms),出口 IP 日本;客户端生成 `Voynix-sh-tokyo` 中继节点(手动选择,不进 Auto 池;`Voynix-Shanghai` 与其同路径)
-- CN 地域 FC 拉不到 docker.io("registry is not reachable")→ shanghai 用 `RELAY_IMAGE`(docker.1panel.live + `@sha256:` digest 固定);FC 仅函数创建/更新时拉镜像,冷启动用内部缓存;镜像更新流程 = push → 更新 .env digest → redeploy shanghai
+- 中转模式(2026-09-01 上线,2026-09-02 起 shanghai→hk + shenzhen→sg 双入口):实测 sh-hk delay ~105ms、下载 ~330-430KB/s;sz-sg delay ~107ms、下载 ~210-430KB/s(HK 出口最快);`RELAY_ENTRIES`(入口短码>出口短码)单字段声明全部中转入口,deploy-fc.sh 自动查询出口域名并逐个注入;客户端生成 `Voynix-sh-hk`/`Voynix-sz-sg` 中继节点(进 `Voynix-Relay` 手动选择)
+- CN 地域 FC 拉不到 docker.io("registry is not reachable")→ 中转入口镜像走公共加速站(`RELAY_IMAGE_MIRROR` 可换,默认 docker.1panel.live),digest 由 deploy-fc.sh 部署时自动查询 Docker Hub 构造;FC 仅函数创建/更新时拉镜像,冷启动用内部缓存;镜像更新流程 = push → redeploy(自动取最新 digest)
 - 客户端 Verge 混合端口为 7897(Verge 自身设置覆盖模板 mixed-port),runtime 配置 external-controller 为空 + unix socket `/tmp/verge/verge-mihomo.sock`(API 测试用 `curl --unix-socket`)
 - 更多踩坑(FC 保留 FC_ 前缀 env、Xray 移除 allowInsecure、/bin/sh 多字节变量名、ACR 个人版未开通)见 `docs/memory.md` 2026-09-01 节
 

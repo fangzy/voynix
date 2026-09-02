@@ -49,11 +49,12 @@ voynix-xray-hk voynix-xray-sg  voynix-xray-tokyo voynix-xray-frankfurt ...
     ↓              ↓              ↓              ↓
 Internet       Internet       Internet       Internet
 
-中转模式(可选):客户端 → 上海 FC(入口) → 东京 FC(出口) → Internet
-  入口节点 outbound 为 VLESS+WS+TLS 链到出口节点(同一镜像,RELAY_* 环境变量激活);
-  出口节点零改动,同一 inbound 同时服务直连客户端与中转连接
+中转模式(可选,`RELAY_ENTRIES` 声明):客户端 → 入口节点 → 出口节点 → Internet
+  双入口(2026-09-02):Shanghai FC(入口) → HK FC(出口)、Shenzhen FC(入口) → SG FC(出口)
+  入口 outbound 为 VLESS+WS+TLS 链到出口(同一镜像,`RELAY_ENTRIES` 激活);出口节点零改动
+  客户端中继节点(Voynix-sh-hk / Voynix-sz-sg)进 `Voynix-Relay`,外网下载域名走 `Proxy-Download`
 
-客户端自动切换:Voynix-Auto (url-test) 按延迟选优
+客户端切换:Voynix-Scene 手动切换 Company/Home(各自 15 分钟 url-test 自动选优)
 ```
 
 ### 本地 Docker 部署(开发调试)
@@ -150,8 +151,7 @@ voynix/
 | Variable | 必需 | 说明 |
 |----------|------|------|
 | `FC_NODES` | 是 | 逗号分隔节点键,如 `sg,hk,tokyo`;未设置/为空 → workflow 显式报错 |
-| `RELAY_EXIT_HOST` | 含 shanghai 时必需 | 中转出口节点 fcapp.run 域名(如 `voynix-xray-tokyo-xxx.ap-northeast-1.fcapp.run`) |
-| `RELAY_IMAGE` | 含 shanghai 时必需 | CN 地域 FC 无法直连 docker.io,需加速镜像地址 + digest 固定(见 `.env.example` deploy 节说明) |
+| `RELAY_ENTRIES` | 含中转入口时必需 | 中转入口配置,格式 `入口>出口完整 fcapp.run 域名`,分号分隔多条(如 `shanghai>voynix-xray-hk-xxx.cn-hongkong.fcapp.run;shenzhen>voynix-xray-sg-xxx.ap-southeast-1.fcapp.run`) |
 | `RELAY_EXIT_PORT` | 否 | 默认 `443` |
 | `RELAY_EXIT_TLS` | 否 | 默认 `true` |
 
@@ -182,7 +182,7 @@ git push origin main   # 或推送 docker-image/**、fc/** 相关改动
 
 注意事项:
 - 各节点 FC 均使用 Docker Hub 公共镜像拉取(`docker.io/<user>/voynix-xray`),仓库必须设为 **Public**(镜像内不含 UUID 等机密,运行时经环境变量注入)
-- **CN 地域(如 shanghai)FC 无法直连 docker.io**(报 "registry is not reachable"):中转入口节点用 `RELAY_IMAGE` 指定加速镜像地址 + digest 固定(FC 仅在函数创建/更新时拉取镜像,日常冷启动用内部缓存,不依赖镜像站可用性)
+- **CN 地域(如 shanghai/shenzhen)FC 无法直连 docker.io**(报 "registry is not reachable"):中转入口节点镜像走公共加速站(`RELAY_IMAGE_MIRROR` 可换,默认 docker.1panel.live),digest 由 deploy-fc.sh 部署时自动查询 Docker Hub(FC 仅在函数创建/更新时拉取镜像,日常冷启动用内部缓存,不依赖镜像站可用性)
 - 国内地域节点已定义于 `fc/s.yaml`,但**代理服务部署国内节点有合规风险,请自行评估**;部分国内地域需向阿里云单独申请开通
 
 ## 客户端配置生成(gen-client-config.sh)
@@ -209,7 +209,7 @@ git push origin main   # 或推送 docker-image/**、fc/** 相关改动
 FC_NODES=sg,hk,tokyo ./scripts/gen-client-config.sh
 
 # 附加中继节点(客户端只连入口,转发链在服务端完成;入口节点须以中转模式部署)
-# .env client 节配置 RELAY_ROUTES="sh-tokyo=shanghai>tokyo" 后正常生成即可,
+# .env client 节配置 RELAY_ENTRIES="sh>hk" 后正常生成即可,
 # 生成名为 Voynix-sh-tokyo 的节点(连接参数=入口 shanghai),手动选择使用,不进 Auto 池
 ```
 

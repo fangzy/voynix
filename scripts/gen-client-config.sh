@@ -5,7 +5,7 @@
 #   ./scripts/gen-client-config.sh                  # 自动获取 s.yaml 中全部已部署节点
 #   ./scripts/gen-client-config.sh sg hk tokyo      # 仅指定节点(逗号/空格分隔均可)
 #   OUT_FILE=clash-verge-sg-tokyo.yaml ./scripts/gen-client-config.sh sg tokyo  # 自定义输出文件名(生成多份配置)
-#   RELAY_ROUTES="sh-tokyo=shanghai>tokyo" ./scripts/gen-client-config.sh sg hk tokyo shanghai
+#   RELAY_ENTRIES="sh>hk" ./scripts/gen-client-config.sh sg hk tokyo shanghai
 #                                                   # 附带生成中继节点(客户端只连入口,转发链在服务端完成)
 #
 # 依赖:
@@ -42,7 +42,12 @@ fi
   echo "请先执行: cp .env.example .env 并填写"
   exit 1
 }
+# 保存调用方覆盖值(.env 的 FC_NODES/RELAY_ENTRIES 是默认值;显式环境变量应优先)
+CALLER_FC_NODES="${FC_NODES:-}"
+CALLER_RELAY_ENTRIES="${RELAY_ENTRIES:-}"
 . "$ENV_FILE"
+[ -z "$CALLER_FC_NODES" ] || FC_NODES="$CALLER_FC_NODES"
+[ -z "$CALLER_RELAY_ENTRIES" ] || RELAY_ENTRIES="$CALLER_RELAY_ENTRIES"
 
 if [ -z "$UUID" ] || [ "$UUID" = "your-uuid-here" ]; then
   echo "错误: UUID 未设置($ENV_FILE)"
@@ -175,11 +180,10 @@ $key|${CLIENT_PREFIX}-$name"
 done
 
 # 场景组(可选):SCENE_NODES="company=sg,tokyo;home=hk,tokyo"(分号分隔场景,逗号分隔节点 key)
-# 每个场景生成 Auto(url-test)+LB(load-balance)子组;有场景时顶层 Voynix-Scene 直接列各场景 Auto/LB + 全量 Auto
+# 每个场景生成一个 url-test 组(测速间隔 900s/15 分钟);Voynix-Scene 用于手动切换场景
 SCENES_TEXT=""
-SCENE_REF=""
+SCENE_SELECT_MEMBERS=""
 if [ -n "${SCENE_NODES:-}" ]; then
-  SCENE_SELECT_MEMBERS=""
   for scene in $(echo "$SCENE_NODES" | tr ';' ' '); do
     scene_name=$(echo "$scene" | cut -d= -f1)
     node_keys=$(echo "$scene" | cut -d= -f2- | tr ',' ' ')
@@ -200,51 +204,51 @@ if [ -n "${SCENE_NODES:-}" ]; then
       continue
     fi
     SCENES_TEXT="$SCENES_TEXT
-  # $scene_display 场景:按延迟选优
-  - name: \"${CLIENT_PREFIX}-$scene_display-Auto\"
+  # $scene_display 场景:按延迟选优(每 15 分钟测速)
+  - name: \"${CLIENT_PREFIX}-$scene_display\"
     type: url-test
     url: 'https://github.com/manifest.json'
-    interval: 300
+    interval: 900
     tolerance: 50
-    proxies:$scene_members
-
-  # $scene_display 场景:负载均衡
-  - name: \"${CLIENT_PREFIX}-$scene_display-LB\"
-    type: load-balance
-    strategy: round-robin
-    url: 'https://github.com/manifest.json'
-    interval: 300
     proxies:$scene_members
 "
     SCENE_SELECT_MEMBERS="$SCENE_SELECT_MEMBERS
-      - ${CLIENT_PREFIX}-$scene_display-Auto
-      - ${CLIENT_PREFIX}-$scene_display-LB"
+      - ${CLIENT_PREFIX}-$scene_display"
   done
-  if [ -n "$SCENE_SELECT_MEMBERS" ]; then
-    SCENES_TEXT="$SCENES_TEXT
-  # 场景切换:各场景 Auto/LB + 全量 Auto
-  - name: \"${CLIENT_PREFIX}-Scene\"
-    type: select
-    proxies:$SCENE_SELECT_MEMBERS
-      - ${CLIENT_PREFIX}-Auto
-"
-    SCENE_REF="
-      - ${CLIENT_PREFIX}-Scene"
-  fi
+  # Voynix-Scene 组延后到 relay 段后统一生成(需条件性把 Voynix-Relay 加入可选成员)
 fi
 
-# 中继路由(可选):RELAY_ROUTES="sh-tokyo=shanghai>tokyo"(分号分隔多条;格式 name=入口>出口)
-# 中继节点 = 客户端只连入口节点,链路在服务端完成(入口以中转模式部署,outbound 指向出口)
+# 节点短码别名:RELAY_ENTRIES 入口可写短码(解析为真实节点 key;新增别名在此扩展,与 deploy-fc.sh 保持一致)
+resolve_node_key() {
+  case "$1" in
+    bj) echo "beijing" ;;
+    hz) echo "hangzhou" ;;
+    sh) echo "shanghai" ;;
+    sz) echo "shenzhen" ;;
+    *)  echo "$1" ;;
+  esac
+}
+
+# 中继节点生成(与部署共用 RELAY_ENTRIES 单字段:入口短码>出口短码,分号分隔;节点名自动=入口-出口,如 sh>hk → Voynix-sh-hk)
+# 兼容旧格式 name=入口>出口(显式节点名);中继节点 = 客户端只连入口节点,链路在服务端完成(入口以中转模式部署)
 # 入口节点必须已在本次生成范围且已部署(取其域名);出口节点客户端配置不引用,仅校验 key 拼写
 RELAY_PROXIES=""
 RELAY_MEMBERS=""
-if [ -n "${RELAY_ROUTES:-}" ]; then
-  for route in $(echo "$RELAY_ROUTES" | tr ';' ' '); do
-    route_name=$(echo "$route" | cut -d= -f1)
-    entry_key=$(echo "$route" | cut -d= -f2- | cut -d'>' -f1)
-    exit_key=$(echo "$route" | cut -s -d'>' -f2)
+if [ -n "${RELAY_ENTRIES:-}" ]; then
+  for route in $(echo "$RELAY_ENTRIES" | tr ';' ' '); do
+    if echo "$route" | grep -q '='; then
+      route_name=$(echo "$route" | cut -d= -f1)   # 旧格式:显式节点名
+      chain=$(echo "$route" | cut -d= -f2-)
+    else
+      chain="$route"                               # 新格式:入口短码>出口短码,节点名自动
+      entry_token=$(echo "$chain" | cut -d'>' -f1)
+      exit_token=$(echo "$chain" | cut -s -d'>' -f2)
+      [ -n "$entry_token" ] && [ -n "$exit_token" ] && route_name="${entry_token}-${exit_token}"
+    fi
+    entry_key=$(resolve_node_key "$(echo "$chain" | cut -d'>' -f1)")
+    exit_key=$(echo "$chain" | cut -s -d'>' -f2)
     if [ -z "$route_name" ] || [ -z "$entry_key" ] || [ -z "$exit_key" ]; then
-      echo "  ⚠️ 跳过格式错误的中继路由 '$route'(格式: name=入口>出口,如 sh-tokyo=shanghai>tokyo)"
+      echo "  ⚠️ 跳过格式错误的中继路由 '$route'(格式: 入口短码>出口短码,如 sh>hk)"
       continue
     fi
     entry_line=$(echo "$NODE_LINES" | grep "^$entry_key|" | head -1)
@@ -285,52 +289,54 @@ sys.exit(0 if 'voynix-$exit_key' in d['resources'] else 1)
   PROXIES="$PROXIES$RELAY_PROXIES"
 fi
 
-# 注意:变量名不用 GROUPS(bash 中是只读数组,赋值会静默失败)
-# 有场景时精简结构:去掉全量 LB,Proxy/Streaming 指向 Scene;无场景时保持原结构(Auto+LB)
-# 中继节点(RELAY_MEMBERS)手动选择,不进 Auto/LB url-test 池
-if [ -n "$SCENE_REF" ]; then
-  LB_BLOCK=""
-  PROXY_MEMBERS="$SCENE_REF$RELAY_MEMBERS
-      - DIRECT"
-  STREAMING_MEMBERS="
-      - ${CLIENT_PREFIX}-Scene
-      - Proxy"
-else
-  LB_BLOCK="
-  # 负载均衡:连接轮询分发到所有节点
-  - name: \"${CLIENT_PREFIX}-LB\"
-    type: load-balance
-    strategy: round-robin
-    url: 'https://github.com/manifest.json'
-    interval: 300
-    proxies:$GROUP_MEMBERS
+# 中继组:仅在有中继路由(RELAY_MEMBERS 非空)时生成;Proxy-Download 无中继时回退仅场景组
+RELAY_GROUP_TEXT=""
+DOWNLOAD_MEMBERS="      - ${CLIENT_PREFIX}-Scene"
+SCENE_RELAY_MEMBER=""
+if [ -n "$RELAY_MEMBERS" ]; then
+  RELAY_GROUP_TEXT="
+  # 中继链路:手动选择(客户端只连入口,转发链在服务端完成)
+  - name: \"${CLIENT_PREFIX}-Relay\"
+    type: select
+    proxies:$RELAY_MEMBERS
 "
-  PROXY_MEMBERS="
-      - ${CLIENT_PREFIX}-Auto
-      - ${CLIENT_PREFIX}-LB$RELAY_MEMBERS
-      - DIRECT"
-  STREAMING_MEMBERS="
-      - ${CLIENT_PREFIX}-Auto
-      - Proxy"
+  DOWNLOAD_MEMBERS="      - ${CLIENT_PREFIX}-Relay
+      - ${CLIENT_PREFIX}-Scene"
+  SCENE_RELAY_MEMBER="
+      - ${CLIENT_PREFIX}-Relay"
 fi
 
+# Voynix-Scene 场景切换组(在 relay 解析后生成):成员 = 各场景 url-test 组 + [有中继时] Voynix-Relay(可直接选中继链路)
+SCENE_TEXT=""
+if [ -n "$SCENE_SELECT_MEMBERS" ]; then
+  SCENE_TEXT="
+  # 场景切换:手动选择场景组 / 中继链路
+  - name: \"${CLIENT_PREFIX}-Scene\"
+    type: select
+    proxies:$SCENE_SELECT_MEMBERS$SCENE_RELAY_MEMBER
+"
+fi
+
+# 注意:变量名不用 GROUPS(bash 中是只读数组,赋值会静默失败)
+# 组结构(2026-09-02 重构):
+#   Voynix-<Scene>(url-test,900s) → Voynix-Relay(有中继时) → Voynix-Scene(select,可选中继) → Proxy(select)
+#   [RELAY_ENTRIES 非空时] Voynix-Relay(select) → Proxy-Download(select) ← 外网下载域名专用
+#   (组顺序按成员引用排列,避免前向引用)
 GROUPS_TEXT="
 proxy-groups:
-  # 时间优先:按延迟(每 300s 测速)选最优节点
-  - name: \"${CLIENT_PREFIX}-Auto\"
-    type: url-test
-    url: 'https://github.com/manifest.json'
-    interval: 300
-    tolerance: 50
-    proxies:$GROUP_MEMBERS
-$LB_BLOCK$SCENES_TEXT  # 切换开关:场景组(如有) / 时间优先(Auto) / 负载均衡(LB)
+$SCENES_TEXT$RELAY_GROUP_TEXT$SCENE_TEXT
+  # 下载专用:外网下载域名走此组(规则见模板 rules);有中继时默认 Relay
+  - name: \"Proxy-Download\"
+    type: select
+    proxies:
+$DOWNLOAD_MEMBERS
+
+  # 常规代理出口:跟随场景切换
   - name: \"Proxy\"
     type: select
-    proxies:$PROXY_MEMBERS
-
-  - name: \"Streaming\"
-    type: select
-    proxies:$STREAMING_MEMBERS
+    proxies:
+      - ${CLIENT_PREFIX}-Scene
+      - DIRECT
 "
 
 # ---------- 注入模板输出 ----------

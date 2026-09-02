@@ -14,7 +14,7 @@
 #   DOCKERHUB_USERNAME    Docker Hub 用户名(各节点镜像仓库 owner)
 #   FC_BEARER_TOKEN       HTTP 触发器 Bearer 鉴权 token(必填,32-128 字符 Base64 字符集;
 #                         存 .env common 节,gitignored;客户端 ws-opts.headers 带 Authorization: Bearer)
-#   RELAY_EXIT_HOST       中转出口节点域名(仅 shanghai 需要,如 voynix-xray-tokyo-xxx.ap-northeast-1.fcapp.run)
+#   RELAY_ENTRIES         中转入口配置(格式 入口短码>出口短码,分号分隔多条,如 sh>hk;sz>sg;出口 fcapp.run 域名由 deploy-fc.sh 自动查询,无需手填)
 #   RELAY_EXIT_PORT       中转出口端口(默认 443;本地联调 8089)
 #   RELAY_EXIT_TLS        中转出口是否 TLS(默认 true;本地容器联调 false)
 #
@@ -192,4 +192,20 @@ resources:
       <<: *node-base
       region: ${vars.region_shenzhen}
       functionName: ${env(IMAGE_NAME)}-shenzhen
-      description: 'Voynix Xray proxy (Shenzhen) - Docker Hub public image'
+      description: 'Voynix Xray relay entry (Shenzhen → exit node) - Docker Hub public image'
+      # 中转入口节点:整块覆盖 environmentVariables(锚点合并为浅合并),outbound 链到出口节点
+      # RELAY_EXIT_HOST=出口节点 fcapp.run 域名(如 tokyo);未设置时 entrypoint 回退直连模式
+      # 注意:FC 保留 FC_ 前缀环境变量名,容器内 token 变量须叫 RELAY_BEARER_TOKEN(值来自 FC_BEARER_TOKEN)
+      environmentVariables:
+        UUID: ${env(UUID)}
+        WS_PATH: ${env(WS_PATH)}
+        RELAY_BEARER_TOKEN: ${env(FC_BEARER_TOKEN)}
+        RELAY_EXIT_HOST: ${env(RELAY_EXIT_HOST)}
+        RELAY_EXIT_PORT: ${env(RELAY_EXIT_PORT)}
+        RELAY_EXIT_TLS: ${env(RELAY_EXIT_TLS)}
+      # CN 地域 FC 无法直连 Docker Hub("registry is not reachable"),走公共加速镜像 + digest 固定
+      # (digest 与 Docker Hub 官方一致,防篡改;FC 仅在函数创建/更新时拉取,之后用内部缓存,不依赖镜像站日常可用)
+      # RELAY_IMAGE 在 .env deploy 节维护;开通 ACR 个人版后可换 registry.cn-shanghai.aliyuncs.com
+      customContainerConfig:
+        image: '${env(RELAY_IMAGE)}'
+        port: 8089

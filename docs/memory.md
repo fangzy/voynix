@@ -132,6 +132,10 @@ curl -x http://127.0.0.1:7890 https://www.google.com   # 返回 204 即为通
 - reject.txt 大概率已覆盖 googletagmanager/doubleclick/scorecardresearch;遥测覆盖层保留兜底，后续可用 mihomo 日志观察是否有重复命中再精简
 - `mihomo -t` 校验会联网拉取 13 个规则集（jsdelivr），离线或 CDN 不可达时会失败
 
+### 客户端组结构重构(2026-09-02)
+
+gen-client-config.sh 组生成逻辑重构：去掉全量 Auto 与场景 LB 组；每个场景一个 url-test 组（Voynix-Company=SG+Tokyo / Voynix-Home=HK+Tokyo，interval 900s/15 分钟）；Voynix-Scene(select) 切换场景；新增 Voynix-Relay(select,全部中继节点) 与 Proxy-Download(select,[Relay, Scene])，外网下载域名（release-assets.githubusercontent.com / objects.githubusercontent.com / codeload.github.com / dl.google.com / download.jetbrains.com）走 Proxy-Download。中转部署配置同日记为单字段 `RELAY_ENTRIES="sh>hk;sz>sg"`（入口短码>出口短码，分号分隔；短码 sh=shanghai/sz=shenzhen 由 deploy-fc.sh 内置别名解析，出口 fcapp.run 域名部署时经 aliyun fc GetTrigger 自动查询、无需手填），逐个解析注入（`RELAY_EXIT_HOST` 仅为 s.yaml 占位，多节点部署用 `FC_NODES=shanghai,shenzhen ./scripts/deploy-fc.sh deploy`；注意脚本单节点参数只取 $2，多节点必须用 FC_NODES）。RELAY_ROUTES 已于 2026-09-02 并入 RELAY_ENTRIES(去重:同一字段驱动部署与客户端中继节点生成)。当前生效链路：shanghai→hk、shenzhen→sg（sh-sg/sz-hk/bj-tokyo 路由已移除，beijing 恢复直连）。同日合并删除 Streaming 组（youtube/googlevideo/netflix 三条流媒体规则并入 Proxy；原 Streaming 成员 [Scene, Proxy] 两条路径都汇到 Scene，功能冗余）。
+
 ## 中转模式 shanghai→tokyo（2026-09-01）
 
 ### 实现与实测
@@ -143,7 +147,7 @@ curl -x http://127.0.0.1:7890 https://www.google.com   # 返回 204 即为通
 - 裸 WS 握手：shanghai/tokyo 均 101
 - delay（mihomo，google generate_204）：tokyo 直连 60ms、sh-tokyo 中继 100-106ms、shanghai 入口单独测 101ms（=中继同路径）
 - 端到端出口 IP：47.74.7.201 / 47.74.41.86 / 8.209.246.59（均 Japan Tokyo Alibaba，多实例出口 IP 池）
-- 客户端配置：`RELAY_ROUTES="sh-tokyo=shanghai>tokyo"`（.env client 节）生成 `Voynix-sh-tokyo`（连接参数=入口 shanghai），列于 Proxy/Scene select 组手动选择，不进 Auto url-test 池
+- 客户端配置：`RELAY_ENTRIES="sh>hk"`（.env deploy 节，2026-09-02 前为 RELAY_ROUTES="sh-tokyo=shanghai>tokyo"）生成 `Voynix-sh-hk`（连接参数=入口 shanghai），列于 Proxy/Scene select 组手动选择，不进 Auto url-test 池
 
 ### 踩坑
 

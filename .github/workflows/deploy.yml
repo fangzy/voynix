@@ -72,7 +72,7 @@ jobs:
       - name: Validate FC_NODES
         env:
           FC_NODES: ${{ vars.FC_NODES }}
-          RELAY_EXIT_HOST: ${{ vars.RELAY_EXIT_HOST }}
+          RELAY_ENTRIES: ${{ vars.RELAY_ENTRIES }}
         run: |
           # 空/空白检测
           if [ -z "${FC_NODES//[[:space:]]/}" ]; then
@@ -88,21 +88,23 @@ jobs:
               *) echo "❌ 未知节点: '$n'(FC_NODES 含无效节点键)"; exit 1 ;;
             esac
           done
-          # shanghai 为中转入口节点,必须提供 RELAY_EXIT_HOST / RELAY_IMAGE(Variables)
-          case " $(echo "$FC_NODES" | tr ',' ' ') " in
-            *" shanghai "*)
-              if [ -z "$RELAY_EXIT_HOST" ]; then
-                echo "❌ FC_NODES 含 shanghai(中转入口),但 Variables 未设置 RELAY_EXIT_HOST"
-                echo "请配置: Variables → RELAY_EXIT_HOST = 出口节点域名(如 voynix-xray-tokyo-xxx.ap-northeast-1.fcapp.run)"
+          # RELAY_ENTRIES(入口>出口完整fcapp.run域名,分号分隔):部署范围内的中转入口必须带出口域名
+          # (镜像 digest 由部署步骤自动查询 Docker Hub,无需配置 Variables)
+          if [ -n "$RELAY_ENTRIES" ]; then
+            for entry in $(echo "$RELAY_ENTRIES" | tr ';' ' '); do
+              ek=$(echo "$entry" | cut -d'>' -f1)
+              ex=$(echo "$entry" | cut -s -d'>' -f2)
+              if [ -z "$ek" ] || [ -z "$ex" ]; then
+                echo "❌ RELAY_ENTRIES 格式错误: '$entry'(应为 入口>出口完整fcapp.run域名,如 shanghai>voynix-xray-hk-xxx.cn-hongkong.fcapp.run)"
                 exit 1
               fi
-              if [ -z "$RELAY_IMAGE" ]; then
-                echo "❌ FC_NODES 含 shanghai,但 Variables 未设置 RELAY_IMAGE"
-                echo "(CN 地域 FC 无法直连 docker.io;加速镜像地址 + digest 固定,见 fc/s.yaml 注释)"
-                exit 1
-              fi
-              ;;
-          esac
+              case " $(echo "$FC_NODES" | tr ',' ' ') " in
+                *" $ek "*)
+                  echo "✅ FC_NODES 含中转入口 $ek(出口已在 RELAY_ENTRIES 声明)"
+                  ;;
+              esac
+            done
+          fi
           echo "✅ FC_NODES 校验通过: $FC_NODES"
 
       - name: Check required secrets (deploy-fc)
@@ -135,6 +137,13 @@ jobs:
       - name: Install Serverless Devs
         run: npm install -g @serverless-devs/s@3.1.10
 
+      - name: Install aliyun CLI
+        run: |
+          curl -sL -o /tmp/aliyun-cli.tgz "https://aliyuncli.alicdn.com/aliyun-cli-linux-latest-amd64.tgz"
+          tar xzf /tmp/aliyun-cli.tgz -C /tmp
+          sudo mv /tmp/aliyun /usr/local/bin/aliyun
+          aliyun --version
+
       - name: Configure Aliyun credentials (access=default)
         env:
           ALIBABA_CLOUD_ACCOUNT_ID: ${{ secrets.ALIBABA_CLOUD_ACCOUNT_ID }}
@@ -155,14 +164,79 @@ jobs:
           WS_PATH: ${{ secrets.WS_PATH || 'ws' }}
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           IMAGE_NAME: ${{ secrets.IMAGE_NAME || 'voynix-xray' }}
-          # 中转变量(仅 shanghai 引用;域名非机密,放 Variables)
-          RELAY_EXIT_HOST: ${{ vars.RELAY_EXIT_HOST }}
+          # aliyun CLI 凭据(GetTrigger 查询中转出口节点 fcapp.run 域名)
+          ALIBABA_CLOUD_ACCESS_KEY_ID: ${{ secrets.ALIBABA_CLOUD_ACCESS_KEY_ID }}
+          ALIBABA_CLOUD_ACCESS_KEY_SECRET: ${{ secrets.ALIBABA_CLOUD_ACCESS_KEY_SECRET }}
+          # 中转入口配置(入口短码>出口短码,如 sh>hk;部署时自动查出口域名,镜像 digest 自动查询)
+          RELAY_ENTRIES: ${{ vars.RELAY_ENTRIES }}
           RELAY_EXIT_PORT: ${{ vars.RELAY_EXIT_PORT || '443' }}
           RELAY_EXIT_TLS: ${{ vars.RELAY_EXIT_TLS || 'true' }}
-          RELAY_IMAGE: ${{ vars.RELAY_IMAGE }}
         run: |
+          # 解析 RELAY_ENTRIES(入口短码>出口短码)→ 出口 fcapp.run 域名经 aliyun fc GetTrigger 自动查询
+          # CN 加速镜像 digest 自动查询 Docker Hub(均无需配置)
+          resolve_node_key() {
+            case "$1" in
+              bj) echo "beijing" ;;
+              hz) echo "hangzhou" ;;
+              sh) echo "shanghai" ;;
+              sz) echo "shenzhen" ;;
+              *)  echo "$1" ;;
+            esac
+          }
+          # s 对 s.yaml 全文件做 ${env()} 解析且空值报错("not found"):直连节点也须非空占位(中转入口出口/镜像 digest 随后覆写)
+          export RELAY_EXIT_HOST="${RELAY_EXIT_HOST:-direct.invalid}"
+          RELAY_IMAGE_MIRROR="${RELAY_IMAGE_MIRROR:-docker.1panel.live}"
+          export RELAY_IMAGE="${RELAY_IMAGE_MIRROR}/${DOCKERHUB_USERNAME}/${IMAGE_NAME}:latest"
+          relay_map=""
+          if [ -n "$RELAY_ENTRIES" ]; then
+            for entry in $(echo "$RELAY_ENTRIES" | tr ';' ' '); do
+              ek=$(resolve_node_key "$(echo "$entry" | cut -d'>' -f1)")
+              ex=$(resolve_node_key "$(echo "$entry" | cut -s -d'>' -f2)")
+              [ -n "$ek" ] && [ -n "$ex" ] || { echo "❌ RELAY_ENTRIES 格式错误: '$entry'(应为 入口短码>出口短码,如 sh>hk)"; exit 1; }
+              meta=$(python3 -c "
+          import yaml, sys
+          d = yaml.safe_load(open('fc/s.yaml'))
+          res = d['resources'].get('voynix-$ex')
+          if not res: sys.exit(1)
+          p = res['props']
+          region_var = p['region'].replace('\${vars.','').replace('}','')
+          print(f\"{d['vars'][region_var]}|{p['functionName']}\")
+          " 2>/dev/null) || { echo "❌ 出口节点 $ex 不在 s.yaml"; exit 1; }
+              region="${meta%%|*}"
+              fn="$(echo "${meta#*|}" | sed "s|\${env(IMAGE_NAME)}|${IMAGE_NAME}|g")"
+              url=$(aliyun fc GetTrigger --region "$region" --functionName "$fn" --triggerName httpTrigger 2>/dev/null | python3 -c "
+          import json, sys
+          try:
+              d = json.load(sys.stdin)
+              print(d.get('httpTrigger', {}).get('urlInternet', ''))
+          except Exception:
+              pass
+          ")
+              [ -n "$url" ] || { echo "❌ 出口节点 $ex($fn @ $region)未部署或无 URL,请先部署出口节点"; exit 1; }
+              relay_map="$relay_map $ek|$(echo "$url" | sed 's|https://||; s|/$||')"
+            done
+          fi
+          need_image=""
+          for n in $(echo "$FC_NODES" | tr ',' ' '); do
+            echo "$relay_map" | grep -q "^$n|" && need_image=1
+          done
+          if [ -n "$need_image" ]; then
+            digest=$(curl -s --max-time 30 "https://hub.docker.com/v2/repositories/${DOCKERHUB_USERNAME}/${IMAGE_NAME}/tags/latest" \
+              | python3 -c "import json,sys; print(json.load(sys.stdin).get('digest',''))" 2>/dev/null || true)
+            if [ -z "$digest" ]; then
+              echo "❌ 查询 Docker Hub digest 失败(${DOCKERHUB_USERNAME}/${IMAGE_NAME}:latest)"
+              exit 1
+            fi
+            export RELAY_IMAGE="${RELAY_IMAGE_MIRROR}/${DOCKERHUB_USERNAME}/${IMAGE_NAME}@${digest}"
+            echo "🔍 CN 加速镜像(自动查询 digest): ${RELAY_IMAGE}"
+          fi
           cd fc
           for n in $(echo "$FC_NODES" | tr ',' ' '); do
+            relay_exit=$(echo "$relay_map" | tr ' ' '\n' | grep "^$n|" | head -1 | cut -d'|' -f2)
+            if [ -n "$relay_exit" ]; then
+              export RELAY_EXIT_HOST="$relay_exit"
+              echo "🚀 $n: 中转入口,出口=$relay_exit"
+            fi
             echo "🚀 部署节点: $n"
             s voynix-${n} deploy -y
           done

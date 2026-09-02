@@ -157,6 +157,8 @@ rules:
   - DOMAIN-SUFFIX,doubleclick.net,REJECT
   - DOMAIN-SUFFIX,scorecardresearch.com,REJECT
   - DOMAIN-SUFFIX,sentry.io,REJECT
+  # ---- Copilot 实验端点(2026-09-02:不用 Copilot,REJECT 省流量;不影响其他 GitHub 功能)----
+  - DOMAIN-SUFFIX,exp.individual.githubcopilot.com,REJECT
   # ---- MSN/Bing 直连(微软中国服务,不走 proxy)----
   - DOMAIN-SUFFIX,msn.com,DIRECT
   - DOMAIN-SUFFIX,msn.com.cn,DIRECT
@@ -177,6 +179,8 @@ rules:
   # ---- Apple 服务默认直连(apple.com 全后缀;个别需走代理的例外在其前单独加 Proxy 规则)----
   - DOMAIN-SUFFIX,developer.apple.com,Proxy
   - DOMAIN-SUFFIX,apple.com,DIRECT
+  # ---- CloudKit 开发者 API 直连实测(2026-09-02;Loyalsoldier 标 proxy 仅因"不稳",实测可用则省代理流量)----
+  - DOMAIN-SUFFIX,api.apple-cloudkit.com,DIRECT
   - DOMAIN-SUFFIX,digicert.com,DIRECT
   - DOMAIN-SUFFIX,geotrust.com,DIRECT
   - DOMAIN-SUFFIX,comodoca.com,DIRECT
@@ -185,9 +189,19 @@ rules:
   - DOMAIN-SUFFIX,edge.microsoft.com,DIRECT
   - DOMAIN-SUFFIX,update.code.visualstudio.com,DIRECT
   - DOMAIN-SUFFIX,vscode-cdn.net,DIRECT
-  - DOMAIN-SUFFIX,youtube.com,Streaming
-  - DOMAIN-SUFFIX,googlevideo.com,Streaming
-  - DOMAIN-SUFFIX,netflix.com,Streaming
+  # ---- OHTTP 隐私中继直连(2026-09-02;Fastly 中继,直连实测可达,不损失隐私,省代理流量)----
+  - DOMAIN-SUFFIX,ohttp-relay1.fastly-edge.com,DIRECT
+  - DOMAIN-SUFFIX,youtube.com,Proxy
+  - DOMAIN-SUFFIX,googlevideo.com,Proxy
+  - DOMAIN-SUFFIX,netflix.com,Proxy
+  # ---- 外网下载域名走 Proxy-Download(2026-09-02;下载默认经中转链路,可手动切回场景)----
+  - DOMAIN-SUFFIX,release-assets.githubusercontent.com,Proxy-Download
+  - DOMAIN-SUFFIX,objects.githubusercontent.com,Proxy-Download
+  - DOMAIN-SUFFIX,codeload.github.com,Proxy-Download
+  - DOMAIN-SUFFIX,dl.google.com,Proxy-Download
+  - DOMAIN-SUFFIX,download.jetbrains.com,Proxy-Download
+  # ---- Google 推送通道直连(2026-09-02;国内大概率连不通,Chrome 网页推送会失效,但可省 FC 长连接占用)----
+  - DOMAIN-SUFFIX,mtalk.google.com,DIRECT
   - DOMAIN-SUFFIX,google.com,Proxy
   - DOMAIN-SUFFIX,github.com,Proxy
   - DOMAIN-SUFFIX,b.ai,Proxy
