@@ -144,6 +144,14 @@ jobs:
           sudo mv /tmp/aliyun /usr/local/bin/aliyun
           aliyun --version
 
+      - name: Setup Python (PyYAML for s.yaml parsing)
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install PyYAML
+        run: pip install --quiet pyyaml
+
       - name: Configure Aliyun credentials (access=default)
         env:
           ALIBABA_CLOUD_ACCOUNT_ID: ${{ secrets.ALIBABA_CLOUD_ACCOUNT_ID }}
@@ -187,6 +195,8 @@ jobs:
           export RELAY_EXIT_HOST="${RELAY_EXIT_HOST:-direct.invalid}"
           RELAY_IMAGE_MIRROR="${RELAY_IMAGE_MIRROR:-docker.1panel.live}"
           export RELAY_IMAGE="${RELAY_IMAGE_MIRROR}/${DOCKERHUB_USERNAME}/${IMAGE_NAME}:latest"
+          # GitHub Variable 若从 .env 复制会带上引号(如 "sh>hk;sz>sg"),先剥掉再解析
+          RELAY_ENTRIES="$(echo "$RELAY_ENTRIES" | tr -d '"')"
           relay_map=""
           if [ -n "$RELAY_ENTRIES" ]; then
             for entry in $(echo "$RELAY_ENTRIES" | tr ';' ' '); do
@@ -197,11 +207,13 @@ jobs:
           import yaml, sys
           d = yaml.safe_load(open('fc/s.yaml'))
           res = d['resources'].get('voynix-$ex')
-          if not res: sys.exit(1)
+          if not res:
+              print(f'ERROR: 出口节点 $ex 不在 fc/s.yaml(检查 RELAY_ENTRIES 出口拼写/别名)', file=sys.stderr)
+              sys.exit(1)
           p = res['props']
           region_var = p['region'].replace('\${vars.','').replace('}','')
           print(f\"{d['vars'][region_var]}|{p['functionName']}\")
-          " 2>/dev/null) || { echo "❌ 出口节点 $ex 不在 s.yaml"; exit 1; }
+          ")
               region="${meta%%|*}"
               fn="$(echo "${meta#*|}" | sed "s|\${env(IMAGE_NAME)}|${IMAGE_NAME}|g")"
               url=$(aliyun fc GetTrigger --region "$region" --functionName "$fn" --triggerName httpTrigger 2>/dev/null | python3 -c "
