@@ -35,6 +35,8 @@ UUID 用于以下位置:
 
 ### FC 多地域部署(生产)
 
+**直连模式(默认)**:客户端 → 海外节点 → Internet
+
 ```
 Client (mihomo/Clash)
     │
@@ -48,14 +50,27 @@ voynix-xray-hk voynix-xray-sg  voynix-xray-tokyo voynix-xray-frankfurt ...
     │ Direct       │ Direct       │ Direct       │ Direct
     ↓              ↓              ↓              ↓
 Internet       Internet       Internet       Internet
-
-中转模式(可选,`RELAY_ENTRIES` 声明):客户端 → 入口节点 → 出口节点 → Internet
-  双入口(2026-09-02):Shanghai FC(入口) → HK FC(出口)、Shenzhen FC(入口) → SG FC(出口)
-  入口 outbound 为 VLESS+WS+TLS 链到出口(同一镜像,`RELAY_ENTRIES` 激活);出口节点零改动
-  客户端中继节点(Voynix-sh-hk / Voynix-sz-sg)进 `Voynix-Relay`,外网下载域名走 `Proxy-Download`
-
-客户端切换:Voynix-Scene 手动切换 Company/Home(各自 15 分钟 url-test 自动选优)
 ```
+
+**中转模式(可选,`RELAY_ENTRIES` 声明,示例链路)**
+
+```
+Client (mihomo/Clash)
+    │
+    │ VLESS + WebSocket + TLS (fcapp.run:443 WSS, Bearer 鉴权)
+    ├────────────────────┬────────────────────┬────────────────────┬──────────────────── ...
+    ↓                    ↓                    ↓                    ↓
+Shanghai FC          Shenzhen FC          Beijing FC           Hangzhou FC
+    │                    │                    │                    │
+    ↓                    ↓                    ↓                    ↓
+HK FC                SG FC                Tokyo FC             HK FC
+    │                    │                    │                    │
+    ↓                    ↓                    ↓                    ↓
+Internet             Internet             Internet             Internet
+```
+
+- 入口 outbound 为 VLESS+WS+TLS 链到出口(同一镜像,出口节点零改动)
+- 每个 RELAY_ENTRIES 条目自动生成一个中继节点(Voynix-入口-出口)进 `Voynix-Relay`;`Voynix-Scene` 在各场景组间切换(`SCENE_NODES` 定义,url-test 自动选优),也可直接选中继;下载域名走 `Proxy-Download`
 
 ### 本地 Docker 部署(开发调试)
 
@@ -95,8 +110,8 @@ Internet       Internet       Internet       Internet
 - ✅ **运行时配置**: envsubst 模板替换，改配置只需重启容器
 - ✅ **私有 IP 过滤**: 路由规则屏蔽 geoip:private
 - ✅ **FC 多地域**: 6 个海外 + 6 个国内地域节点
-- ✅ **中转模式**: 同一镜像支持入口中转(如上海→东京,`RELAY_*` 环境变量激活),客户端生成中继节点(如 `sh-tokyo`)
-- ✅ **客户端自动切换**: url-test 按延迟自动选优 (Voynix-Auto)
+- ✅ **中转模式**: 同一镜像支持入口中转,`RELAY_ENTRIES` 一条配置即一个入口(出口域名与镜像 digest 自动查询,无需手动维护)
+- ✅ **场景切换**: 各场景组(`SCENE_NODES`)url-test 按延迟自动选优,`Voynix-Scene` 一键切换场景或直接选中继链路
 
 ## 目录结构
 
@@ -151,7 +166,7 @@ voynix/
 | Variable | 必需 | 说明 |
 |----------|------|------|
 | `FC_NODES` | 是 | 逗号分隔节点键,如 `sg,hk,tokyo`;未设置/为空 → workflow 显式报错 |
-| `RELAY_ENTRIES` | 含中转入口时必需 | 中转入口配置,格式 `入口>出口完整 fcapp.run 域名`,分号分隔多条(如 `shanghai>voynix-xray-hk-xxx.cn-hongkong.fcapp.run;shenzhen>voynix-xray-sg-xxx.ap-southeast-1.fcapp.run`) |
+| `RELAY_ENTRIES` | 含中转入口时必需 | 中转入口配置,格式 `入口短码>出口短码`,分号分隔多条(如 `sh>hk;sz>sg`;入口短码如 sh=shanghai,出口 fcapp.run 域名部署时自动查询) |
 | `RELAY_EXIT_PORT` | 否 | 默认 `443` |
 | `RELAY_EXIT_TLS` | 否 | 默认 `true` |
 
@@ -187,7 +202,7 @@ git push origin main   # 或推送 docker-image/**、fc/** 相关改动
 
 ## 客户端配置生成(gen-client-config.sh)
 
-自动从 FC 查询已部署节点的域名（调用 `aliyun fc GetTrigger` 获取 `urlInternet`），无需手动填写域名，生成 `client-config/clash-verge.yaml`（多节点 + `Voynix-Auto` 自动切换）。
+自动从 FC 查询已部署节点的域名（调用 `aliyun fc GetTrigger` 获取 `urlInternet`），无需手动填写域名，生成 `client-config/clash-verge.yaml`（各节点 + `SCENE_NODES` 场景组 + 可选 `RELAY_ENTRIES` 中继链路）。
 
 ### 1. 前置条件
 
@@ -208,23 +223,24 @@ git push origin main   # 或推送 docker-image/**、fc/** 相关改动
 # 也支持 FC_NODES 环境变量或 .env.deploy 中的 FC_NODES(与 CI/部署语义一致,逗号分隔;设置为空/纯空白 → 显式报错)
 FC_NODES=sg,hk,tokyo ./scripts/gen-client-config.sh
 
-# 附加中继节点(客户端只连入口,转发链在服务端完成;入口节点须以中转模式部署)
-# .env client 节配置 RELAY_ENTRIES="sh>hk" 后正常生成即可,
-# 生成名为 Voynix-sh-tokyo 的节点(连接参数=入口 shanghai),手动选择使用,不进 Auto 池
+# 附加中继节点(可选,与部署共用 RELAY_ENTRIES 配置;入口节点须以中转模式部署)
+# .env 配置 RELAY_ENTRIES="sh>hk" 后正常生成即可,自动生成 Voynix-sh-hk 等中继节点
+# (进 Voynix-Relay,可在 Voynix-Scene 中直接选中继链路)
 ```
 
 节点选择优先级:**命令行参数 > `FC_NODES` 环境变量 > 全部节点**。`FC_NODES` 未设置时生成全部已部署节点,设置后只生成其中列出的节点(与 CI 部署共用同一套节点键)。
 
 ### 3. 生成结果
 
-生成结果包含(示例:已部署 sg/hk/tokyo 三个节点):
+生成内容由当前配置驱动:节点来自已部署 FC 清单,场景组来自 `SCENE_NODES`,中继节点来自 `RELAY_ENTRIES`:
 
-| 代理 | 说明 |
+| 内容 | 说明 |
 |------|------|
-| `Voynix-SG` | 新加坡节点 (fcapp.run:443 WSS) |
-| `Voynix-HK` | 香港节点 (fcapp.run:443 WSS) |
-| `Voynix-Tokyo` | 东京节点 (fcapp.run:443 WSS) |
-| `Voynix-Auto` | url-test 组,每 300s 测速(`https://github.com/manifest.json`),按延迟自动切换,容差 50ms |
+| 节点 | 每个已部署 FC 节点一个 VLESS 代理 (fcapp.run:443 WSS) |
+| 场景组 | 每个场景(`SCENE_NODES`,如 company/home)一个 url-test 组,每 15 分钟测速(`https://github.com/manifest.json`)自动选优 |
+| `Voynix-Scene` | 手动切换:选择某场景组,或直接选中继链路 |
+| `Voynix-Relay` | 中继节点手动选择;每个 `RELAY_ENTRIES` 条目一个(如 `sh>hk` → `Voynix-sh-hk`,连接参数=入口节点) |
+| `Proxy-Download` | 外网下载域名专用(默认走中继链路,可切回场景) |
 
 > FC 节点端口必须是 **443**(WSS;FC 网关终止 TLS)。
 
@@ -234,7 +250,7 @@ FC_NODES=sg,hk,tokyo ./scripts/gen-client-config.sh
 
 1. 打开 Clash Verge
 2. 导入生成的 `clash-verge.yaml`
-3. 选择 `Voynix-Auto` 代理组并测试连通性（或自行在 HK/SG 间手动选择）
+3. 在 `Voynix-Scene` 中选择场景组(如 company/home)测试连通性,或直接选具体节点/中继链路
 
 > 客户端必须设置 `skip-cert-verify: true`，因为 FC 网关证书与客户端 servername 不匹配。
 
@@ -242,7 +258,7 @@ FC_NODES=sg,hk,tokyo ./scripts/gen-client-config.sh
 
 ### 5. 测速 URL 说明
 
-`Voynix-Auto` 组默认使用 `https://github.com/manifest.json` 测速（全球可达）。如需更换，修改模板中 `url-test` 的 `url` 字段后重新生成。
+各场景组(`url-test`)默认使用 `https://github.com/manifest.json` 测速（全球可达）。如需更换，修改模板中 `url-test` 的 `url` 字段后重新生成。
 
 ## 本地手动部署(deploy-fc.sh)
 
@@ -317,8 +333,8 @@ mihomo -f client-config/clash-verge.yaml
 # 通过代理测试(返回 204 即为通)
 curl -x http://127.0.0.1:7890 https://www.google.com
 
-# 查看自动切换组当前选择的节点
-curl http://127.0.0.1:9090/proxies/Voynix-Auto
+# 查看组当前选择的节点(场景组为 url-test 自动切换;也可查 Voynix-Scene 手动组)
+curl http://127.0.0.1:9090/proxies/Voynix-Scene
 ```
 
 ## 容器镜像

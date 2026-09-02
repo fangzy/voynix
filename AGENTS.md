@@ -181,7 +181,7 @@ Docker Hub public img   Docker Hub public img   RELAY_IMAGE 镜像
     ↓                      ↓                      ↓
 Internet               Internet               Internet
                           ▲
-中转模式(2026-09-02,RELAY_ENTRIES 声明,双入口):
+中转模式(RELAY_ENTRIES 声明,条目数即入口数;当前两条:sh>hk、sz>sg):
   Client ─ VLESS+WS+TLS(Bearer) ─→ Shanghai FC(入口) ─→ HK FC(出口) ─→ Internet   [Voynix-sh-hk]
   Client ─ VLESS+WS+TLS(Bearer) ─→ Shenzhen FC(入口) ─→ SG FC(出口) ─→ Internet   [Voynix-sz-sg]
   入口=RELAY_ENTRIES("sh>hk;sz>sg"),deploy-fc.sh 自动查询出口域名,容器 outbound VLESS+WS+TLS 经 FC 网关 443 链到出口;
@@ -227,7 +227,7 @@ Note: CN nodes (cn-*) defined 2026-08 per request; deploying proxy on CN regions
 - SG WS 节点实验结论(2026-08-29):Bearer 鉴权、Cookie/HeaderField 会话亲和均验证过,细节见 docs/memory.md
 - 客户端模板 rules 采用 Loyalsoldier/clash-rules 全量 13 个 rule-providers(2026-08-31 起,jsdelivr CDN 每日 6:30 自动构建;reject REJECT、apple/icloud/direct/private/lancidr/cncidr DIRECT、google/proxy/gfw/tld-not-cn/telegramcidr Proxy,结尾 MATCH,DIRECT 黑名单兜底);7 条国外遥测 REJECT 与 MSN/Bing/系统打点/Apple 证书 CA 直连等保留为顶部覆盖层(国内遥测走 `GEOSITE,cn,DIRECT` 不加规则),外网下载域名(release-assets/objects/codeload.github.com、dl.google.com、download.jetbrains.com)走 Proxy-Download(2026-09-02)——细节见 `docs/memory.md`
 - 2026-08 试验/踩坑细节(WS 实验、全量 WS 切换、Bearer/会话亲和实验、tcpFastOpen、遥测 REJECT 依据)归档于 `docs/memory.md`,本文件仅保留现状事实与约定
-- 中转模式(2026-09-01 上线,2026-09-02 起 shanghai→hk + shenzhen→sg 双入口):实测 sh-hk delay ~105ms、下载 ~330-430KB/s;sz-sg delay ~107ms、下载 ~210-430KB/s(HK 出口最快);`RELAY_ENTRIES`(入口短码>出口短码)单字段声明全部中转入口,deploy-fc.sh 自动查询出口域名并逐个注入;客户端生成 `Voynix-sh-hk`/`Voynix-sz-sg` 中继节点(进 `Voynix-Relay` 手动选择)
+- 中转模式(2026-09-01 上线;2026-09-02 起配置两条中继链路 shanghai→hk、shenzhen→sg,入口数随 RELAY_ENTRIES 增减):实测 sh-hk delay ~105ms、下载 ~330-430KB/s;sz-sg delay ~107ms、下载 ~210-430KB/s(HK 出口最快);`RELAY_ENTRIES`(入口短码>出口短码)单字段声明全部中转入口,deploy-fc.sh 自动查询出口域名并逐个注入;客户端生成 `Voynix-sh-hk`/`Voynix-sz-sg` 中继节点(进 `Voynix-Relay` 手动选择)
 - CN 地域 FC 拉不到 docker.io("registry is not reachable")→ 中转入口镜像走公共加速站(`RELAY_IMAGE_MIRROR` 可换,默认 docker.1panel.live),digest 由 deploy-fc.sh 部署时自动查询 Docker Hub 构造;FC 仅函数创建/更新时拉镜像,冷启动用内部缓存;镜像更新流程 = push → redeploy(自动取最新 digest)
 - 客户端 Verge 混合端口为 7897(Verge 自身设置覆盖模板 mixed-port),runtime 配置 external-controller 为空 + unix socket `/tmp/verge/verge-mihomo.sock`(API 测试用 `curl --unix-socket`)
 - 更多踩坑(FC 保留 FC_ 前缀 env、Xray 移除 allowInsecure、/bin/sh 多字节变量名、ACR 个人版未开通)见 `docs/memory.md` 2026-09-01 节
