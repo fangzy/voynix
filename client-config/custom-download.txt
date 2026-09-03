@@ -1,0 +1,10 @@
+# Voynix 自定义覆盖层 —— 外网下载类域名(payload: YAML,2026-09-03;不含策略,绑定处自定)
+# 引用示例: - RULE-SET,custom-download,Proxy-Download(须先于 github.com 等宽 Proxy 规则)
+# 条目语义: `+.域名` = 后缀匹配(含子域,对应 DOMAIN-SUFFIX);裸域名 = 仅精确匹配。全为后缀语义 → 统一 +. 前缀
+payload:
+  - '+.release-assets.githubusercontent.com'
+  - '+.objects.githubusercontent.com'
+  - '+.codeload.github.com'
+  - '+.raw.githubusercontent.com'
+  - '+.dl.google.com'
+  - '+.download.jetbrains.com'

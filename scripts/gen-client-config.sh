@@ -354,6 +354,20 @@ tpl = tpl.replace('# BEGIN_GROUPS\n# END_GROUPS', groups)
 open(out_path, 'w').write(tpl)
 PYEOF
 
+# ---------- 刷新 jsdelivr 规则文件缓存(purge) ----------
+# 背景:jsdelivr gh @main 浮动标签在 push 后各边缘节点缓存不一致,易拉回旧内容(2026-09-03 实测多次回退,
+# 症状:provider ruleCount>0 但内容是旧版/裸条目)。改过 custom-*.txt 并 push 后重跑本脚本即自动 purge,
+# 保证客户端下次拉取得到新版。可用 GEN_SKIP_PURGE=1 跳过;仓库/用户与模板 rule-providers url 需一致(fork 时同步改)
+if [ "${GEN_SKIP_PURGE:-0}" != "1" ]; then
+  echo "[gen-client-config] 刷新 jsdelivr 规则文件缓存(purge)..."
+  for f in custom-reject custom-direct custom-download custom-proxy; do
+    st=$(curl -sf -m 20 "https://purge.jsdelivr.net/gh/fangzy/voynix@main/client-config/$f.txt" 2>/dev/null | python3 -c "import json,sys;print(json.load(sys.stdin).get('status','?'))" 2>/dev/null)
+    if [ -n "$st" ]; then echo "  ✅ $f: purge $st"; else echo "  ⚠️ $f: purge 失败(网络/仓库不可达,可稍后手动 purge 或忽略)"; fi
+  done
+else
+  echo "[gen-client-config] 已跳过 jsdelivr purge(GEN_SKIP_PURGE=1)"
+fi
+
 echo ""
 echo "Generated: $OUTPUT"
 echo "  节点数: $(echo "$NODE_LINES" | wc -l | tr -d ' ')$(if [ -n "$RELAY_MEMBERS" ]; then echo " + 中继 $(echo "$RELAY_MEMBERS" | grep -c '^ *- ' | tr -d ' ') 条"; fi)"

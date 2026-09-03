@@ -1,7 +1,7 @@
 # PROJECT KNOWLEDGE BASE
 
 **Generated:** 2026-05-27
-**Updated:** 2026-09-01
+**Updated:** 2026-09-03
 **Branch:** main
 
 ## OVERVIEW
@@ -19,7 +19,11 @@ Xray-core Docker proxy service using VLESS + WebSocket + TLS,HTTP 触发器 Bear
 │   ├── entrypoint.sh
 │   ├── healthcheck.sh
 ├── client-config/         # Clash client templates
-│   └── clash-verge.yaml.template   # Dual-node (HK+SG) + url-test auto-switch
+│   ├── clash-verge.yaml.template   # Dual-node (HK+SG) + url-test auto-switch
+│   ├── custom-reject.txt   # 自定义覆盖层-REJECT 域名(payload YAML 列表,jsdelivr http provider 拉取)
+│   ├── custom-direct.txt   # 自定义覆盖层-DIRECT 域名(payload YAML 列表,含 apple.com 宽直连;装配顺序 proxy 组先于本组)
+│   ├── custom-download.txt # 自定义覆盖层-下载域名(payload YAML 列表,装配行绑定 Proxy-Download)
+│   └── custom-proxy.txt    # 自定义覆盖层-Proxy 域名(仅 developer.apple.com,2026-09-03 精简;余域由 Loyalsoldier proxy/gfw/tld-not-cn 兜底)
 ├── fc/
 │   ├── s.yaml             # Serverless Devs multi-region FC config
 │   └── s.ws.yaml          # SG WebSocket 实验配置(独立函数 voynix-xray-ws-sg,不碰生产)
@@ -45,8 +49,9 @@ Xray-core Docker proxy service using VLESS + WebSocket + TLS,HTTP 触发器 Bear
 | Update Docker build | `docker-image/Dockerfile` | Multi-stage Alpine 3.20 build |
 | Update CI/CD | `.github/workflows/deploy.yml` | GitHub Actions (build+push+FC deploy) |
 | Client configuration | `client-config/clash-verge.yaml.template` | mihomo/Clash template (dual-node, url-test;rules 用 Loyalsoldier 13 规则集,MATCH,DIRECT) |
+| Edit client custom rules | `client-config/custom-{reject,direct,download,proxy}.txt` | 自定义覆盖层规则文件(payload: YAML 列表,2026-09-03 起,不含策略名;与 Loyalsoldier 同构);策略绑定与顺序在模板 rules 装配块(`RULE-SET,custom-*`),jsdelivr 拉取,push 即生效 |
 | FC deployment config | `fc/s.yaml` | Serverless Devs, regions + images per node;shanghai/shenzhen=中转入口(RELAY_ENTRIES 声明,镜像 digest 自动查询) |
-| Generate client config | `scripts/gen-client-config.sh` | Auto-fetch FC node domains (aliyun fc GetTrigger); filter via args or `FC_NODES`; `RELAY_ENTRIES` 生成中继节点 |
+| Generate client config | `scripts/gen-client-config.sh` | Auto-fetch FC node domains (aliyun fc GetTrigger); filter via args or `FC_NODES`; `RELAY_ENTRIES` 生成中继节点;生成后自动 purge jsdelivr 规则文件缓存(`GEN_SKIP_PURGE=1` 跳过) |
 | Local FC deploy | `scripts/deploy-fc.sh` | Reads 根目录 .env;`RELAY_ENTRIES`(入口短码>出口短码,单字段)声明的中转入口自动查出口域名并逐个注入 |
 | Runtime entrypoint | `docker-image/entrypoint.sh` | envsubst + Xray start;`RELAY_EXIT_HOST` 非空→relay 模板,否则直连模板 |
 | Health check | `docker-image/healthcheck.sh` | Docker HEALTHCHECK script (pidof xray) |
@@ -134,6 +139,7 @@ FC_NODES=sg,hk,tokyo ./scripts/gen-client-config.sh   # same filter via env (bla
 SCENE_NODES="company=sg,tokyo;home=hk,tokyo" ./scripts/gen-client-config.sh
 # 中继节点(可选,RELAY_ENTRIES 驱动,deploy 节):生成 Voynix-sh-hk 等(连接参数=入口节点,进 Voynix-Relay 手动选择)
 RELAY_ENTRIES="sh>hk" ./scripts/gen-client-config.sh sg hk tokyo shanghai
+# (每次 gen 自动 purge jsdelivr 4 个规则文件缓存,防止边缘节点拉回旧内容;GEN_SKIP_PURGE=1 跳过)
 
 # Verify with mihomo(需 geodata:macOS 本机用 -d 指向 Clash Verge 数据目录,否则尝试联网下载 geodata 会卡住)
 mihomo -t -d "$HOME/Library/Application Support/io.github.clash-verge-rev.clash-verge-rev" -f client-config/clash-verge.yaml
@@ -209,7 +215,7 @@ All nodes use Docker Hub public image `docker.io/<user>/voynix-xray`; deployment
 | `huhehaote` | cn-huhehaote | `voynix-xray-huhehaote` | `voynix-xray-huhehaote-*.cn-huhehaote.fcapp.run` |
 | `shenzhen` | cn-shenzhen | `voynix-xray-shenzhen` | `voynix-xray-shenzhen-*.cn-shenzhen.fcapp.run`(**中转入口**,出口→sg) |
 
-Note: CN nodes (cn-*) defined 2026-08 per request; deploying proxy on CN regions carries compliance risk — user's decision. Old SG function (`proxy_service$xray-exit`, ACR image) was deleted 2026-08 and replaced by `voynix-xray-sg` (Docker Hub image, same spec as HK).
+Note: CN nodes (cn-*) defined 2026-08 per request; deploying proxy on CN regions carries compliance risk — user's decision.
 
 ## NOTES
 
@@ -218,18 +224,17 @@ Note: CN nodes (cn-*) defined 2026-08 per request; deploying proxy on CN regions
 - FC client port is **443 (WSS)**
 - FC function spec (2026-08): 0.1 vCPU / 128MB / `instanceConcurrency` 30 / `minInstances` 0 / `reservedConcurrency` 15.
 - Never verify FC nodes with plain `curl` without token (Bearer 鉴权下无 token → 403);裸 WS 握手带 token 验证:对 token + Upgrade 头 → 101(路径不匹配/旧实例 → 404,曾踩坑)
-- Both FC nodes use the same Docker Hub public image `docker.io/<user>/voynix-xray` (no secrets in image; runtime vars injected via env). ACR no longer used (personal edition: one instance per account was the original blocker, now moot). Deployment scope: GitHub Actions `deploy-fc` job loops over the `FC_NODES` repo variable (comma-separated node keys, e.g. `sg,hk,tokyo`, split via bash `tr`); unset/empty/whitespace-only FC_NODES or unknown keys make the workflow fail fast with a clear message (GitHub Actions expressions have no `split` function, so deployment is a bash for-loop, not a matrix). Only custom-container-capable FC regions are defined (Seoul etc. rejected by FC API 2026-08: "Custom container image is not supported in this region")
+- 镜像内不含机密(UUID/token 运行时 env 注入,Docker Hub 公共镜像共享);ACR 已弃用、地域支持排除史与 CI 部署细节见 `docs/memory.md`(2026-08/09-01 节),FC_NODES/部署语义见上 NODES 段
 - No nginx. FC gateway terminates TLS; Xray inbound is plain WS (生产默认,无 TLS)
 - No test suite. Infrastructure project
 - Runtime envsubst means config changes only need a container restart, not a rebuild
 - Client config 场景组(Voynix-Company/Home)url-test 每 15 分钟(900s)测速 `https://github.com/manifest.json`(tolerance 50ms);Voynix-Scene 切换场景,Voynix-Relay+Proxy-Download 供外网下载走中转
 - Xray v26.2.6 启动告警:WebSocket transport 已标记弃用,官方建议迁移 XHTTP(stream-up H2/H3);现网仍可用
 - SG WS 节点实验结论(2026-08-29):Bearer 鉴权、Cookie/HeaderField 会话亲和均验证过,细节见 docs/memory.md
-- 客户端模板 rules 采用 Loyalsoldier/clash-rules 全量 13 个 rule-providers(2026-08-31 起,jsdelivr CDN 每日 6:30 自动构建;reject REJECT、apple/icloud/direct/private/lancidr/cncidr DIRECT、google/proxy/gfw/tld-not-cn/telegramcidr Proxy,结尾 MATCH,DIRECT 黑名单兜底);7 条国外遥测 REJECT 与 MSN/Bing/系统打点/Apple 证书 CA 直连等保留为顶部覆盖层(国内遥测走 `GEOSITE,cn,DIRECT` 不加规则),外网下载域名(release-assets/objects/codeload.github.com、dl.google.com、download.jetbrains.com)走 Proxy-Download(2026-09-02)——细节见 `docs/memory.md`
+- 客户端模板 rules 采用 Loyalsoldier/clash-rules 全量 13 个 rule-providers(2026-08-31 起,jsdelivr CDN 每日 6:30 自动构建;reject REJECT、apple/icloud/direct/private/lancidr/cncidr DIRECT、google/proxy/gfw/tld-not-cn/telegramcidr Proxy,结尾 MATCH,DIRECT 黑名单兜底);7 条国外遥测 REJECT 与 MSN/Bing/系统打点/Apple 证书 CA 直连等保留为顶部覆盖层(国内遥测走 `GEOSITE,cn,DIRECT` 不加规则),外网下载域名(release-assets/objects/codeload.github.com、raw.githubusercontent.com、dl.google.com、download.jetbrains.com)走 Proxy-Download(2026-09-02)——细节见 `docs/memory.md`
 - 2026-08 试验/踩坑细节(WS 实验、全量 WS 切换、Bearer/会话亲和实验、tcpFastOpen、遥测 REJECT 依据)归档于 `docs/memory.md`,本文件仅保留现状事实与约定
-- 中转模式(2026-09-01 上线;2026-09-02 起配置两条中继链路 shanghai→hk、shenzhen→sg,入口数随 RELAY_ENTRIES 增减):实测 sh-hk delay ~105ms、下载 ~330-430KB/s;sz-sg delay ~107ms、下载 ~210-430KB/s(HK 出口最快);`RELAY_ENTRIES`(入口短码>出口短码)单字段声明全部中转入口,deploy-fc.sh 自动查询出口域名并逐个注入;客户端生成 `Voynix-sh-hk`/`Voynix-sz-sg` 中继节点(进 `Voynix-Relay` 手动选择)
-- CN 地域 FC 拉不到 docker.io("registry is not reachable")→ 中转入口镜像走公共加速站(`RELAY_IMAGE_MIRROR` 可换,默认 docker.1panel.live),digest 由 deploy-fc.sh 部署时自动查询 Docker Hub 构造;FC 仅函数创建/更新时拉镜像,冷启动用内部缓存;镜像更新流程 = push → redeploy(自动取最新 digest)
-- 客户端 Verge 混合端口为 7897(Verge 自身设置覆盖模板 mixed-port),runtime 配置 external-controller 为空 + unix socket `/tmp/verge/verge-mihomo.sock`(API 测试用 `curl --unix-socket`)
+- 客户端自定义覆盖层规则(2026-09-03 起架构)与模板解耦:内容为 4 个规则文件 `client-config/custom-{reject,direct,download,proxy}.txt`(**payload: YAML 列表**,行为 domain,与 Loyalsoldier 同构;纯数据,**不含策略名**,任意配置按自己策略绑定;**条目语义:`+.域名`=后缀匹配(含子域,对应 DOMAIN-SUFFIX),裸域名=仅精确——本组条目统一 `+.` 前缀**,2026-09-03 曾用裸条目致宽直连子域全漏、后续才加前缀);策略绑定与顺序在模板 rules 顶部「自定义覆盖层装配」块(顺序契约:AND-REJECT > `custom-reject`(REJECT)> `custom-proxy`(Proxy)> `custom-direct`(DIRECT)> `custom-download`(Proxy-Download)> GEOSITE cn),各列表经 `rule-providers.custom-*`(type http,url=jsdelivr `https://cdn.jsdelivr.net/gh/fangzy/voynix@main/client-config/custom-*.txt`,behavior domain,interval 86400,format 默认 yaml)拉取;改规则 = 编辑对应 txt → git push → 重跑 gen(自动 purge jsdelivr 缓存,2026-09-03 加,`GEN_SKIP_PURGE=1` 可跳过)→ 客户端 reload/周期刷新生效。⚠️ 依赖仓库公开(jsdelivr 只服务 public);provider 拉取失败时对应组规则**静默缺失**(本地校验可用 file provider 兜底验证,详见 docs/memory.md 2026-09-03 节)。要点:同列表内顺序无意义,跨列表顺序靠装配行——新增域名守「窄先于宽」(`custom-download` 的 codeload.github.com 先于 github.com 宽规则;google 子域在 `custom-direct`,google.com 宽走 Loyalsoldier google 兜底);`custom-proxy` 仅 developer.apple.com、`custom-direct` 含 apple.com 宽直连,装配 proxy 先于 direct 即保证该代理特例先命中;AND 复合与 GEOSITE cn 无法列表化,留在装配行;⚠️ 规则文件必须 payload: 包装(纯文本逐行会按默认 yaml 解析成 0 条规则,2026-09-03 踩坑,曾误加 format:text 后统一 payload 格式),条目须 `+.` 前缀表达后缀(裸=精确,踩坑详见 docs/memory.md)
+- 客户端 Verge 本机使用细节(混合端口 7897 由 Verge 自身设置覆盖、unix socket API、更新流程)见 `docs/memory.md` 2026-09-01 节
 - 更多踩坑(FC 保留 FC_ 前缀 env、Xray 移除 allowInsecure、/bin/sh 多字节变量名、ACR 个人版未开通)见 `docs/memory.md` 2026-09-01 节
 
 ## 维护规则

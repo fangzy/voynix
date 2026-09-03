@@ -1,0 +1,42 @@
+# Voynix 自定义覆盖层 —— DIRECT 类域名(payload: YAML,2026-09-03;不含策略,绑定处自定)
+# 引用示例: - RULE-SET,custom-direct,DIRECT(装配中位于 custom-proxy 之后:本列表内 +.apple.com 宽直连
+#           不会吞掉 custom-proxy 的 +.developer.apple.com 代理特例)
+# 注意:google 子域窄规则在本列表,google.com 宽代理由 Loyalsoldier google 列表兜底(其在本列表之后)
+# 条目语义: `+.域名` = 后缀匹配(含子域,对应 DOMAIN-SUFFIX);裸域名 = 仅精确匹配。全为后缀语义 → 统一 +. 前缀
+payload:
+  - '+.msn.com'
+  - '+.msn.com.cn'
+  - '+.msn.cn'
+  - '+.bing.com'
+  - '+.bing.com.cn'
+  - '+.wpad'
+  - '+.msftconnecttest.com'
+  - '+.msftncsi.com'
+  - '+.smartscreen.microsoft.com'
+  - '+.events.data.microsoft.com'
+  - '+.wns.windows.com'
+  - '+.delivery.mp.microsoft.com'
+  - '+.windowsupdate.com'
+  - '+.update.microsoft.com'
+  - '+.gateway.icloud.com'
+# Apple 宽直连(2026-09-03 从模板装配行移入本列表;装配顺序 custom-proxy > custom-direct 保证 developer.apple.com 先命中)
+  - '+.apple.com'
+  - '+.apple-relay.cloudflare.com'
+  - '+.api.apple-cloudkit.com'
+  - '+.digicert.com'
+  - '+.geotrust.com'
+  - '+.comodoca.com'
+  - '+.globalsign.com'
+  - '+.edge.microsoft.com'
+  - '+.update.code.visualstudio.com'
+  - '+.vscode-cdn.net'
+  - '+.gallerycdn.vsassets.io'
+  - '+.marketplace.visualstudio.com'
+  - '+.ogads-pa.clients6.google.com'
+  - '+.safebrowsing.googleapis.com'
+  - '+.content-autofill.googleapis.com'
+  - '+.ogs.google.com'
+  - '+.mtalk.google.com'
+# OHTTP 隐私中继整域直连(2026-09-03;替代原模板 DOMAIN-REGEX ^ohttp-relay.*\.fastly-edge\.com$ 一行:
+# 放宽为整域,覆盖 ohttp-relay1/2/3 及 google-ohttp-relay-safebrowsing 等 Chrome/各厂商中继;fastly-edge.com 为中继专用域,直连实测可达)
+  - '+.fastly-edge.com'

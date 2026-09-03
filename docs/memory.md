@@ -134,7 +134,31 @@ curl -x http://127.0.0.1:7890 https://www.google.com   # 返回 204 即为通
 
 ### 客户端组结构重构(2026-09-02)
 
-gen-client-config.sh 组生成逻辑重构：去掉全量 Auto 与场景 LB 组；每个场景一个 url-test 组（Voynix-Company=SG+Tokyo / Voynix-Home=HK+Tokyo，interval 900s/15 分钟）；Voynix-Scene(select) 切换场景；新增 Voynix-Relay(select,全部中继节点) 与 Proxy-Download(select,[Relay, Scene])，外网下载域名（release-assets.githubusercontent.com / objects.githubusercontent.com / codeload.github.com / dl.google.com / download.jetbrains.com）走 Proxy-Download。中转部署配置同日记为单字段 `RELAY_ENTRIES="sh>hk;sz>sg"`（入口短码>出口短码，分号分隔；短码 sh=shanghai/sz=shenzhen 由 deploy-fc.sh 内置别名解析，出口 fcapp.run 域名部署时经 aliyun fc GetTrigger 自动查询、无需手填），逐个解析注入（`RELAY_EXIT_HOST` 仅为 s.yaml 占位，2026-09-02 起 FC_NODES 自动并集中转入口(声明即部署,CI 与 deploy-fc.sh 一致),无需再手动 `FC_NODES=shanghai,shenzhen` 列出入口;单节点部署参数仍精确部署）。RELAY_ROUTES 已于 2026-09-02 并入 RELAY_ENTRIES(去重:同一字段驱动部署与客户端中继节点生成)。当前生效链路：shanghai→hk、shenzhen→sg（sh-sg/sz-hk/bj-tokyo 路由已移除，beijing 恢复直连）。同日合并删除 Streaming 组（youtube/googlevideo/netflix 三条流媒体规则并入 Proxy；原 Streaming 成员 [Scene, Proxy] 两条路径都汇到 Scene，功能冗余）。
+gen-client-config.sh 组生成逻辑重构：去掉全量 Auto 与场景 LB 组；每个场景一个 url-test 组（Voynix-Company=SG+Tokyo / Voynix-Home=HK+Tokyo，interval 900s/15 分钟）；Voynix-Scene(select) 切换场景；新增 Voynix-Relay(select,全部中继节点) 与 Proxy-Download(select,[Relay, Scene])，外网下载域名（release-assets.githubusercontent.com / objects.githubusercontent.com / codeload.github.com / raw.githubusercontent.com / dl.google.com / download.jetbrains.com）走 Proxy-Download。中转部署配置同日记为单字段 `RELAY_ENTRIES="sh>hk;sz>sg"`（入口短码>出口短码，分号分隔；短码 sh=shanghai/sz=shenzhen 由 deploy-fc.sh 内置别名解析，出口 fcapp.run 域名部署时经 aliyun fc GetTrigger 自动查询、无需手填），逐个解析注入（`RELAY_EXIT_HOST` 仅为 s.yaml 占位，2026-09-02 起 FC_NODES 自动并集中转入口(声明即部署,CI 与 deploy-fc.sh 一致),无需再手动 `FC_NODES=shanghai,shenzhen` 列出入口;单节点部署参数仍精确部署）。RELAY_ROUTES 已于 2026-09-02 并入 RELAY_ENTRIES(去重:同一字段驱动部署与客户端中继节点生成)。当前生效链路：shanghai→hk、shenzhen→sg（sh-sg/sz-hk/bj-tokyo 路由已移除，beijing 恢复直连）。同日合并删除 Streaming 组（youtube/googlevideo/netflix 三条流媒体规则并入 Proxy；原 Streaming 成员 [Scene, Proxy] 两条路径都汇到 Scene，功能冗余）。
+
+## 客户端 rules 独立文件化(2026-09-03)
+
+背景：客户端模板 rules 顶部的自定义覆盖层（遥测 REJECT/功能直连/Proxy-Download 域名/GEOSITE cn）原先内联在 `clash-verge.yaml.template` 里，逐行与 Loyalsoldier 规则集混排。当日目标：规则独立成文件维护、便于分发。方案当日演进三次：
+
+1. **注入方案（初版，已实现又回退）**：模板留 `# BEGIN_CUSTOM_RULES/# END_CUSTOM_RULES` 标记，`gen-client-config.sh` 生成时把 `custom-rules.yaml` 内容拼入 rules 顶部（python 注入，逐行 diff 校验一致）。运行时输出不变，但改规则需重跑 gen。
+2. **rule-provider 能力实测**（用户问能否用 provider 方式）：
+   - `behavior: classical` 支持 DOMAIN/DOMAIN-SUFFIX/DOMAIN-REGEX/GEOSITE/AND 复合/逐行不同目标（`mihomo -t` 实测通过）；
+   - `type: file` provider 的 `path` 以 mihomo 运行 home（`-d`）为基准，不是配置文件目录；
+   - **http provider 拉取失败时 `mihomo -t` 仍返回成功**——provider 被静默跳过、对应组规则缺失且无告警（本地校验必须用 file provider 兜底，勿信裸 -t 通过）。
+3. **终版（去耦合）**：用户选定 http provider + 仓库公开走 jsdelivr（`cdn.jsdelivr.net/gh/fangzy/voynix@main/client-config/custom-*.txt`，behavior domain，interval 86400，与 Loyalsoldier 同构）。后发现 classical 文件**每行自带策略目标** → 规则文件与 `Proxy`/`Proxy-Download` 组名强耦合（改组名/被其它配置复用即失效）→ 拆为 4 个纯域名列表 `custom-{reject,direct,download,proxy}.txt`（纯数据不含策略名），策略绑定与顺序收敛到模板 rules 顶部「装配」块：AND-REJECT > custom-reject(REJECT) > custom-proxy(Proxy) > custom-direct(DIRECT) > custom-download(Proxy-Download) > GEOSITE cn。`apple.com` 宽直连由模板特例移入 custom-direct，装配 proxy 先于 direct 保证 `developer.apple.com`（custom-proxy）先命中；AND 复合与 GEOSITE cn 无法列表化，留在装配行。
+
+4. **rule-provider 文件格式坑（2026-09-03 发现并修复）**：4 个文件初版为纯文本逐行域名，mihomo rule-provider `format` **默认 yaml**（要求 `payload:` 包装）→ 纯文本按 YAML 解析失败 → **provider 加载成功但 ruleCount=0（空规则集）**，`RULE-SET,custom-direct` 空转静默跳过 → 症状：custom-direct 里的域名（如 update.code.visualstudio.com）落到 Loyalsoldier `RuleSet(proxy)` 走代理。判定手段：Verge 内核 API `GET /providers/rules` 看各 provider ruleCount（纯文本=0，google=112）；`mihomo -t` 通过不代表规则解析成功（**-t 对空 provider 静默放行**，本地 file-provider 兜底验证同样要查 ruleCount 或文件格式）。修复路线：先给 provider 加 `format: text`（文档：domain+text=每行一域名，实测 ruleCount 恢复 8/33/6/1），后按用户意见统一改为 **payload: YAML 格式**（`payload:` + `- '域名'`，与 Loyalsoldier 文件完全同构），模板 provider 不加 format（默认 yaml）。⚠️ 规则文件保持 payload 包装；若哪天改纯文本，必须同步加 `format: text`。
+
+5. **payload 条目语义坑（同日二次修复）**：payload-YAML 下 **裸条目 = 仅精确匹配（不覆盖子域）；后缀匹配必须写 `+.` 前缀**（Loyalsoldier 的 gfw/proxy.txt 正是 `+.github.com`/`+.visualstudio.com` 式）。初版 4 文件全用裸条目 → 显式条目（update.code.visualstudio.com、marketplace.visualstudio.com、gateway.icloud.com 等）命中正常，但**靠宽条目后缀覆盖的子域全部漏匹配**（如 6-courier.push.apple.com ⊂ `apple.com` 裸条目 → 漏到 Loyalsoldier `RuleSet(proxy)` 走代理）。判定要点：Verge Connections 面板/`/connections` API 的 rule 字段只显示 `RuleSet`，**无法区分是哪个 provider**——必须看服务日志 match 行（`[TCP] ... match RuleSet(custom-direct) using DIRECT` 带完整规则名）；当"显式条目命中、靠后缀的子域不命中"即裸=精确的直接证据。修复：全部条目加 `+.` 前缀（统一后缀语义，等价原 DOMAIN-SUFFIX；原精确 DOMAIN 条目放宽为后缀，无实际危害）。
+
+与 Loyalsoldier 去重结论（解析其 payload YAML 格式、`+.` 后缀条目按子域语义比对）：
+
+- custom-proxy 原 7 域 youtube/googlevideo/netflix/google.com/github.com/b.ai/developer.apple.com 全部已被其 proxy/gfw/tld-not-cn 覆盖（同绑 Proxy）→ 删除 6 域，仅留 developer.apple.com（顺序职责：先于 custom-direct 内 apple.com 宽直连命中，而 Loyalsoldier apple 列表本身不含它）；
+- 原模板 `DOMAIN-REGEX,^ohttp-relay.*\.fastly-edge\.com$` 存在漏匹配：Chrome Safe Browsing OHTTP 中继真实主机为 `google-ohttp-relay-safebrowsing.fastly-edge.com`（google- 前缀不在正则内）→ 移入 custom-direct 放宽为整域 `fastly-edge.com`（该域为中继专用，Mozilla/Google 各 relay 均在其下，直连实测可达）。
+
+文档分工约定（本次确立）：AGENTS.md 只保留**现状事实与反直觉点**（不记逐次变更流水）；过程、理由、逐日改动与踩坑一律归档本文件。上一条 2026-09-03 大 bullet 已按此压成现状描述。
+
+本地验证流程（仓库公开前）：`gen-client-config.sh` 重新生成后，把生成配置的 4 个 custom-* provider 临时改为 `type: file` + path 指向仓库 txt（复制到 scratch 目录），`mihomo -t -d scratch -f scratch.yaml` 通过即装配有效；仓库公开前 jsdelivr 404 属预期（provider 静默跳过）。
 
 ## 中转模式 shanghai→tokyo（2026-09-01）
 
@@ -148,6 +172,10 @@ gen-client-config.sh 组生成逻辑重构：去掉全量 Auto 与场景 LB 组�
 - delay（mihomo，google generate_204）：tokyo 直连 60ms、sh-tokyo 中继 100-106ms、shanghai 入口单独测 101ms（=中继同路径）
 - 端到端出口 IP：47.74.7.201 / 47.74.41.86 / 8.209.246.59（均 Japan Tokyo Alibaba，多实例出口 IP 池）
 - 客户端配置：`RELAY_ENTRIES="sh>hk"`（.env deploy 节，2026-09-02 前为 RELAY_ROUTES="sh-tokyo=shanghai>tokyo"）生成 `Voynix-sh-hk`（连接参数=入口 shanghai），列于 Proxy/Scene select 组手动选择，不进 Auto url-test 池
+
+### 链路带宽实测(2026-09-02 起,现行两条链路)
+
+实测（客户端武汉电信,经中转链路）：sh-hk delay ~105ms、下载 ~330-430KB/s；sz-sg delay ~107ms、下载 ~210-430KB/s（HK 出口最快）。
 
 ### 踩坑
 

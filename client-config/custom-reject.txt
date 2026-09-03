@@ -1,0 +1,12 @@
+# Voynix 自定义覆盖层 —— REJECT 类域名(payload: YAML,2026-09-03;与 Loyalsoldier 同构,不含策略,绑定处自定)
+# 引用示例: - RULE-SET,custom-reject,REJECT(需在其它同类宽规则之前)
+# 条目语义: `+.域名` = 后缀匹配(含子域,对应 DOMAIN-SUFFIX);裸域名 = 仅精确匹配。本文件全为后缀语义 → 统一 +. 前缀
+payload:
+  - '+.mobile.events.data.microsoft.com'
+  - '+.default.exp-tas.com'
+  - '+.analytics.google.com'
+  - '+.googletagmanager.com'
+  - '+.doubleclick.net'
+  - '+.scorecardresearch.com'
+  - '+.sentry.io'
+  - '+.exp.individual.githubcopilot.com'

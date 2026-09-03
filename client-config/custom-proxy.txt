@@ -1,0 +1,7 @@
+# Voynix 自定义覆盖层 —— Proxy 类域名(payload: YAML,2026-09-03;不含策略,绑定处自定)
+# 引用示例: - RULE-SET,custom-proxy,Proxy(装配中位于 custom-direct 之前)
+# 2026-09-03 精简:仅保留 developer.apple.com(须先于 custom-direct 列表内 +.apple.com 宽直连命中);
+# 原 youtube/googlevideo/netflix/google.com/github.com/b.ai 已被 Loyalsoldier proxy/gfw/tld-not-cn 列表覆盖,删除冗余
+# 条目语义: `+.域名` = 后缀匹配(含子域,对应 DOMAIN-SUFFIX);裸域名 = 仅精确匹配
+payload:
+  - '+.developer.apple.com'
