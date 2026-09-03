@@ -243,7 +243,8 @@ if [ "$NODES" = "both" ]; then
     relay_exit=$(echo "$RELAY_EXIT_MAP" | grep "^$key|" | head -1 | cut -d'|' -f2)
     if [ -n "$relay_exit" ]; then
       export RELAY_EXIT_HOST="$relay_exit"
-      echo "[deploy-fc]   $key: 中转入口,出口=$relay_exit"
+      # fcapp.run 域名含随机实例 id,日志不打印(尤其 CI),防暴露节点被定向攻击
+      echo "[deploy-fc]   $key: 中转入口(出口 fcapp.run 域名已注入,不在日志显示)"
     fi
     echo "[deploy-fc] 部署 $key..."
     s voynix-${key} deploy -y
@@ -253,7 +254,8 @@ else
     relay_exit=$(echo "$RELAY_EXIT_MAP" | grep "^$key|" | head -1 | cut -d'|' -f2)
     if [ -n "$relay_exit" ]; then
       export RELAY_EXIT_HOST="$relay_exit"
-      echo "[deploy-fc]   $key: 中转入口,出口=$relay_exit"
+      # fcapp.run 域名含随机实例 id,日志不打印(尤其 CI),防暴露节点被定向攻击
+      echo "[deploy-fc]   $key: 中转入口(出口 fcapp.run 域名已注入,不在日志显示)"
     fi
     echo "[deploy-fc] 部署 $key..."
     s voynix-${key} deploy -y

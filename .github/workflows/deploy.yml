@@ -88,14 +88,15 @@ jobs:
               *) echo "❌ 未知节点: '$n'(FC_NODES 含无效节点键)"; exit 1 ;;
             esac
           done
-          # RELAY_ENTRIES(入口>出口完整fcapp.run域名,分号分隔):部署范围内的中转入口必须带出口域名
+          # RELAY_ENTRIES(入口短码>出口短码,分号分隔,如 sh>hk;出口 fcapp.run 域名部署时自动查询)
+          # ⚠️ 变量只放节点短码,勿写 fcapp.run 域名——含随机实例 id,会进入公开 CI 日志
           # (镜像 digest 由部署步骤自动查询 Docker Hub,无需配置 Variables)
           if [ -n "$RELAY_ENTRIES" ]; then
             for entry in $(echo "$RELAY_ENTRIES" | tr ';' ' '); do
               ek=$(echo "$entry" | cut -d'>' -f1)
               ex=$(echo "$entry" | cut -s -d'>' -f2)
               if [ -z "$ek" ] || [ -z "$ex" ]; then
-                echo "❌ RELAY_ENTRIES 格式错误: '$entry'(应为 入口>出口完整fcapp.run域名,如 shanghai>voynix-xray-hk-xxx.cn-hongkong.fcapp.run)"
+                echo "❌ RELAY_ENTRIES 格式错误: '$entry'(应为 入口短码>出口短码,如 sh>hk)"
                 exit 1
               fi
               case " $(echo "$FC_NODES" | tr ',' ' ') " in
@@ -258,7 +259,9 @@ jobs:
             relay_exit=$(echo "$relay_map" | tr ' ' '\n' | grep "^$n|" | head -1 | cut -d'|' -f2)
             if [ -n "$relay_exit" ]; then
               export RELAY_EXIT_HOST="$relay_exit"
-              echo "🚀 $n: 中转入口,出口=$relay_exit"
+              # fcapp.run 域名含随机实例 id,进公开 CI 日志会暴露节点供定向攻击 → 打码,日志不显示
+              echo "::add-mask::$relay_exit"
+              echo "🚀 $n: 中转入口(出口 fcapp.run 域名已注入,不在日志显示)"
             fi
             echo "🚀 部署节点: $n"
             s voynix-${n} deploy -y
