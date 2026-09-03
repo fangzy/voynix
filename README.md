@@ -106,7 +106,7 @@ Internet             Internet             Internet             Internet
 - ✅ **一键部署**: `deploy-fc.sh` 构建 → 推送 → 部署,支持单节点或 `FC_NODES` 批量部署
 - ✅ **自动生成客户端配置**: `gen-client-config.sh` 自动抓取 FC 节点域名,无需手填
 - ✅ **轻量镜像**: Alpine 3.20 基础镜像，约 35MB
-- ✅ **低成本**: FC 按量计费,minInstances 0 无请求不收费,0.1 vCPU/128MB 轻量规格,长连接复用降低并发费用
+- ✅ **低成本**: FC 按量计费,minInstances 0 无请求不收费,0.05 vCPU/128MB 轻量规格,长连接复用降低并发费用
 - ✅ **运行时配置**: envsubst 模板替换，改配置只需重启容器
 - ✅ **私有 IP 过滤**: 路由规则屏蔽 geoip:private
 - ✅ **FC 多地域**: 6 个海外 + 6 个国内地域节点

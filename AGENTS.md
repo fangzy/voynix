@@ -1,7 +1,7 @@
 # PROJECT KNOWLEDGE BASE
 
 **Generated:** 2026-05-27
-**Updated:** 2026-09-03
+**Updated:** 2026-09-04
 **Branch:** main
 
 ## OVERVIEW
@@ -23,10 +23,9 @@ Xray-core Docker proxy service using VLESS + WebSocket + TLS,HTTP 触发器 Bear
 │   ├── custom-reject.txt   # 自定义覆盖层-REJECT 域名(payload YAML 列表,jsdelivr http provider 拉取)
 │   ├── custom-direct.txt   # 自定义覆盖层-DIRECT 域名(payload YAML 列表,含 apple.com 宽直连;装配顺序 proxy 组先于本组)
 │   ├── custom-download.txt # 自定义覆盖层-下载域名(payload YAML 列表,装配行绑定 Proxy-Download)
-│   └── custom-proxy.txt    # 自定义覆盖层-Proxy 域名(仅 developer.apple.com,2026-09-03 精简;余域由 Loyalsoldier proxy/gfw/tld-not-cn 兜底)
+│   └── custom-proxy.txt    # 自定义覆盖层-Proxy 域名(仅 developer.apple.com;余域由 Loyalsoldier proxy/gfw/tld-not-cn 兜底)
 ├── fc/
-│   ├── s.yaml             # Serverless Devs multi-region FC config
-│   └── s.ws.yaml          # SG WebSocket 实验配置(独立函数 voynix-xray-ws-sg,不碰生产)
+│   └── s.yaml             # Serverless Devs multi-region FC config
 ├── scripts/
 │   ├── gen-client-config.sh   # Generate client config (auto-fetch FC node domains)
 │   └── deploy-fc.sh           # Local FC deploy script (build/push/deploy)
@@ -45,11 +44,10 @@ Xray-core Docker proxy service using VLESS + WebSocket + TLS,HTTP 触发器 Bear
 |------|----------|-------|
 | Modify proxy config | `docker-image/config.template.json` | 直连出口模板(envsubst 需 export 变量,见 Config Templating) |
 | Modify relay config | `docker-image/config.relay.template.json` | 中转入口模板(outbound=VLESS→`RELAY_EXIT_HOST`;本地联调 `RELAY_EXIT_TLS=false`) |
-| WS experiment deploy | `fc/s.ws.yaml` | `cd fc && s deploy -t s.ws.yaml -y`(SG,函数 voynix-xray-ws-sg,镜像 :ws tag) |
 | Update Docker build | `docker-image/Dockerfile` | Multi-stage Alpine 3.20 build |
 | Update CI/CD | `.github/workflows/deploy.yml` | GitHub Actions (build+push+FC deploy) |
 | Client configuration | `client-config/clash-verge.yaml.template` | mihomo/Clash template (dual-node, url-test;rules 用 Loyalsoldier 13 规则集,MATCH,DIRECT) |
-| Edit client custom rules | `client-config/custom-{reject,direct,download,proxy}.txt` | 自定义覆盖层规则文件(payload: YAML 列表,2026-09-03 起,不含策略名;与 Loyalsoldier 同构);策略绑定与顺序在模板 rules 装配块(`RULE-SET,custom-*`),jsdelivr 拉取,push 即生效 |
+| Edit client custom rules | `client-config/custom-{reject,direct,download,proxy}.txt` | 自定义覆盖层规则文件(payload: YAML 列表,不含策略名;与 Loyalsoldier 同构);策略绑定与顺序在模板 rules 装配块(`RULE-SET,custom-*`),jsdelivr 拉取,push 即生效 |
 | FC deployment config | `fc/s.yaml` | Serverless Devs, regions + images per node;shanghai/shenzhen=中转入口(RELAY_ENTRIES 声明,镜像 digest 自动查询) |
 | Generate client config | `scripts/gen-client-config.sh` | Auto-fetch FC node domains (aliyun fc GetTrigger); filter via args or `FC_NODES`; `RELAY_ENTRIES` 生成中继节点;生成后自动 purge jsdelivr 规则文件缓存(`GEN_SKIP_PURGE=1` 跳过) |
 | Local FC deploy | `scripts/deploy-fc.sh` | Reads 根目录 .env;`RELAY_ENTRIES`(入口短码>出口短码,单字段)声明的中转入口自动查出口域名并逐个注入 |
@@ -76,7 +74,7 @@ Xray-core Docker proxy service using VLESS + WebSocket + TLS,HTTP 触发器 Bear
 | `TFO` | No | `true` | inbound sockopt tcpFastOpen(生产 true;本地 Docker qemu 下需 `false`,见 docs/memory.md) |
 
 Deploy 节变量(镜像到 GitHub Secret 供 CI):
-`DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`, `ALIBABA_CLOUD_ACCOUNT_ID`, `ALIBABA_CLOUD_ACCESS_KEY_ID`, `ALIBABA_CLOUD_ACCESS_KEY_SECRET`, `FC_NODES`, `IMAGE_NAME`, `RELAY_ENTRIES`(中转入口配置,格式 `入口短码>出口短码`(如 sh>hk),出口 fcapp.run 域名部署时自动查询;一个 .env 同时部署多个中转服务器), `RELAY_EXIT_PORT`(443), `RELAY_EXIT_TLS`(true);RELAY_IMAGE 无需配置(deploy-fc.sh 自动查询 Docker Hub digest 构造,镜像站前缀可 `RELAY_IMAGE_MIRROR` 覆盖)。Client 节:`SCENE_NODES`(场景组);中继节点由 deploy 节 `RELAY_ENTRIES` 同源驱动(2026-09-02 起 RELAY_ROUTES 已并入)。
+`DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`, `ALIBABA_CLOUD_ACCOUNT_ID`, `ALIBABA_CLOUD_ACCESS_KEY_ID`, `ALIBABA_CLOUD_ACCESS_KEY_SECRET`, `FC_NODES`, `IMAGE_NAME`, `RELAY_ENTRIES`(中转入口配置,格式 `入口短码>出口短码`(如 sh>hk),出口 fcapp.run 域名部署时自动查询;一个 .env 同时部署多个中转服务器), `RELAY_EXIT_PORT`(443), `RELAY_EXIT_TLS`(true);RELAY_IMAGE 无需配置(deploy-fc.sh 自动查询 Docker Hub digest 构造,镜像站前缀可 `RELAY_IMAGE_MIRROR` 覆盖)。Client 节:`SCENE_NODES`(场景组);中继节点由 deploy 节 `RELAY_ENTRIES` 同源驱动。
 
 ### Relay Mode(中转模式)
 
@@ -101,7 +99,7 @@ Xray listens on **port 8089** (plain WS;TLS terminated by FC gateway). No revers
 
 - `config.template.json` uses `${UUID}` / `${WS_PATH}` / `${TFO}`;`config.relay.template.json` 另用 `${RELAY_EXIT_HOST}` / `${RELAY_EXIT_PORT}` / `${RELAY_EXIT_SECURITY}` / `${FC_BEARER_TOKEN}`
 - `entrypoint.sh` runs `envsubst` at container start to produce `/etc/xray/config.json`(`RELAY_EXIT_HOST` 非空选 relay 模板;`RELAY_EXIT_TLS` true/false → security tls/none)
-- ⚠️ **envsubst 只替换环境变量,不替换 shell 变量**——entrypoint 必须 `export UUID/WS_PATH`,否则未显式传入的变量会被替换成空串(曾因 WS_PATH 未 export 导致 path 变成 `/`、WS 握手 404,2026-08-29)
+- ⚠️ **envsubst 只替换环境变量,不替换 shell 变量**——entrypoint 必须 `export UUID/WS_PATH`,否则未显式传入的变量会被替换成空串(WS_PATH 未 export 时 path 会变成 `/`,WS 握手 404)
 - Never hardcode UUIDs in the template
 - ⚠️ Xray v26.2.6 已移除 tlsSettings `allowInsecure`(迁移 pinnedPeerCertSha256)——outbound TLS 用 `serverName` 正常校验即可(fcapp.run 公共证书有效,实测 101)
 
@@ -135,7 +133,7 @@ docker run -d -p 8089:8089 -e UUID=$(uuidgen) voynix-xray:latest
 ./scripts/gen-client-config.sh sg hk      # only sg + hk (args take priority)
 FC_NODES=sg,hk,tokyo ./scripts/gen-client-config.sh   # same filter via env (blank → error)
 # 场景组(可选):生成 Company(SG+Tokyo)/Home(HK+Tokyo) 各一个 url-test 组(15 分钟测速)+ Voynix-Scene 切换
-# 组结构:Company/Home(url-test 900s)→ Relay(select,有中继时)→ Scene(select,可选中继)/ Proxy-Download(select,下载专用)+ Proxy(2026-09-02 起无 Streaming,流媒体规则并入 Proxy)
+# 组结构:Company/Home(url-test 900s)→ Relay(select,有中继时)→ Scene(select,可选中继)/ Proxy-Download(select,下载专用)+ Proxy(无 Streaming 组,流媒体规则并入 Proxy)
 SCENE_NODES="company=sg,tokyo;home=hk,tokyo" ./scripts/gen-client-config.sh
 # 中继节点(可选,RELAY_ENTRIES 驱动,deploy 节):生成 Voynix-sh-hk 等(连接参数=入口节点,进 Voynix-Relay 手动选择)
 RELAY_ENTRIES="sh>hk" ./scripts/gen-client-config.sh sg hk tokyo shanghai
@@ -198,7 +196,7 @@ Internet               Internet               Internet
 
 ## NODES
 
-All nodes use Docker Hub public image `docker.io/<user>/voynix-xray`; deployment scope is controlled by the `FC_NODES` repo variable (comma-separated, e.g. `sg,hk,tokyo`). **RELAY_ENTRIES 声明的中转入口自动并入部署集合(FC_NODES ∪ 入口,2026-09-02 起 CI 与 deploy-fc.sh 一致),无需再手动把入口加进 FC_NODES**(显式单节点部署参数除外,保持精确)。Empty/空白/未设置 → CI 显式报错; unknown keys also fail fast(入口键同样校验,CI 查 s.yaml、本地查 VALID_KEYS)。`fc/s.yaml` defines 12 nodes (6 overseas + 6 CN, YAML anchor `&node-base` for shared props). Only FC 3.0 regions supporting custom-container images are listed (verified 2026-08 against official supported-regions icons; Seoul/KL/Jakarta/Bangkok/London/Qingdao/Wulanchabu/Chengdu excluded). **已部署(2026-09-02):sg / hk / tokyo(直连出口)/ shanghai(中转入口→hk)/ shenzhen(中转入口→sg)**;CI repo 变量 FC_NODES 为 sg,hk,tokyo(中转入口由 RELAY_ENTRIES 声明自动并入,本地 .env 同)。
+All nodes use Docker Hub public image `docker.io/<user>/voynix-xray`; deployment scope is controlled by the `FC_NODES` repo variable (comma-separated, e.g. `sg,hk,tokyo`). **RELAY_ENTRIES 声明的中转入口自动并入部署集合(FC_NODES ∪ 入口,CI 与 deploy-fc.sh 一致),无需再手动把入口加进 FC_NODES**(显式单节点部署参数除外,保持精确)。Empty/空白/未设置 → CI 显式报错; unknown keys also fail fast(入口键同样校验,CI 查 s.yaml、本地查 VALID_KEYS)。`fc/s.yaml` defines 12 nodes (6 overseas + 6 CN, YAML anchor `&node-base` for shared props). Only FC 3.0 regions supporting custom-container images are listed (Seoul/KL/Jakarta/Bangkok/London/Qingdao/Wulanchabu/Chengdu excluded). **已部署:sg / hk / tokyo(直连出口)/ shanghai(中转入口→hk)/ shenzhen(中转入口→sg)**;CI repo 变量 FC_NODES 为 sg,hk,tokyo(中转入口由 RELAY_ENTRIES 声明自动并入,本地 .env 同)。
 
 | Key | Region | Function | Client host (fcapp.run:443 WSS) |
 |-----|--------|----------|------------------------------|
@@ -215,31 +213,31 @@ All nodes use Docker Hub public image `docker.io/<user>/voynix-xray`; deployment
 | `huhehaote` | cn-huhehaote | `voynix-xray-huhehaote` | `voynix-xray-huhehaote-*.cn-huhehaote.fcapp.run` |
 | `shenzhen` | cn-shenzhen | `voynix-xray-shenzhen` | `voynix-xray-shenzhen-*.cn-shenzhen.fcapp.run`(**中转入口**,出口→sg) |
 
-Note: CN nodes (cn-*) defined 2026-08 per request; deploying proxy on CN regions carries compliance risk — user's decision.
+Note: CN nodes (cn-*) are deployed per user request; proxy on CN regions carries compliance risk — user's decision.
 
 ## NOTES
 
 - FC gateway terminates TLS; no container-side certs (inbound plain WS,生产默认)
 - Client must set `skip-cert-verify: true`
 - FC client port is **443 (WSS)**
-- FC function spec (2026-08): 0.1 vCPU / 128MB / `instanceConcurrency` 30 / `minInstances` 0 / `reservedConcurrency` 15.
-- Never verify FC nodes with plain `curl` without token (Bearer 鉴权下无 token → 403);裸 WS 握手带 token 验证:对 token + Upgrade 头 → 101(路径不匹配/旧实例 → 404,曾踩坑)
+- FC function spec: 0.05 vCPU / 128MB / `instanceConcurrency` 30 / `minInstances` 0 / `reservedConcurrency` 15.
+- Never verify FC nodes with plain `curl` without token (Bearer 鉴权下无 token → 403);裸 WS 握手带 token 验证:对 token + Upgrade 头 → 101(路径不匹配/旧实例 → 404)
 - 镜像内不含机密(UUID/token 运行时 env 注入,Docker Hub 公共镜像共享);ACR 已弃用、地域支持排除史与 CI 部署细节见 `docs/memory.md`(2026-08/09-01 节),FC_NODES/部署语义见上 NODES 段
 - No nginx. FC gateway terminates TLS; Xray inbound is plain WS (生产默认,无 TLS)
 - No test suite. Infrastructure project
 - Runtime envsubst means config changes only need a container restart, not a rebuild
 - Client config 场景组(Voynix-Company/Home)url-test 每 15 分钟(900s)测速 `https://github.com/manifest.json`(tolerance 50ms);Voynix-Scene 切换场景,Voynix-Relay+Proxy-Download 供外网下载走中转
 - Xray v26.2.6 启动告警:WebSocket transport 已标记弃用,官方建议迁移 XHTTP(stream-up H2/H3);现网仍可用
-- SG WS 节点实验结论(2026-08-29):Bearer 鉴权、Cookie/HeaderField 会话亲和均验证过,细节见 docs/memory.md
-- 客户端模板 rules 采用 Loyalsoldier/clash-rules 全量 13 个 rule-providers(2026-08-31 起,jsdelivr CDN 每日 6:30 自动构建;reject REJECT、apple/icloud/direct/private/lancidr/cncidr DIRECT、google/proxy/gfw/tld-not-cn/telegramcidr Proxy,结尾 MATCH,DIRECT 黑名单兜底);7 条国外遥测 REJECT 与 MSN/Bing/系统打点/Apple 证书 CA 直连等保留为顶部覆盖层(国内遥测走 `GEOSITE,cn,DIRECT` 不加规则),外网下载域名(release-assets/objects/codeload.github.com、raw.githubusercontent.com、dl.google.com、download.jetbrains.com)走 Proxy-Download(2026-09-02)——细节见 `docs/memory.md`
-- 2026-08 试验/踩坑细节(WS 实验、全量 WS 切换、Bearer/会话亲和实验、tcpFastOpen、遥测 REJECT 依据)归档于 `docs/memory.md`,本文件仅保留现状事实与约定
-- 客户端自定义覆盖层规则(2026-09-03 起架构)与模板解耦:内容为 4 个规则文件 `client-config/custom-{reject,direct,download,proxy}.txt`(**payload: YAML 列表**,行为 domain,与 Loyalsoldier 同构;纯数据,**不含策略名**,任意配置按自己策略绑定;**条目语义:`+.域名`=后缀匹配(含子域,对应 DOMAIN-SUFFIX),裸域名=仅精确——本组条目统一 `+.` 前缀**,2026-09-03 曾用裸条目致宽直连子域全漏、后续才加前缀);策略绑定与顺序在模板 rules 顶部「自定义覆盖层装配」块(顺序契约:AND-REJECT > `custom-reject`(REJECT)> `custom-proxy`(Proxy)> `custom-direct`(DIRECT)> `custom-download`(Proxy-Download)> GEOSITE cn),各列表经 `rule-providers.custom-*`(type http,url=jsdelivr `https://cdn.jsdelivr.net/gh/fangzy/voynix@main/client-config/custom-*.txt`,behavior domain,interval 86400,format 默认 yaml)拉取;改规则 = 编辑对应 txt → git push → 重跑 gen(自动 purge jsdelivr 缓存,2026-09-03 加,`GEN_SKIP_PURGE=1` 可跳过)→ 客户端 reload/周期刷新生效。⚠️ 依赖仓库公开(jsdelivr 只服务 public);provider 拉取失败时对应组规则**静默缺失**(本地校验可用 file provider 兜底验证,详见 docs/memory.md 2026-09-03 节)。要点:同列表内顺序无意义,跨列表顺序靠装配行——新增域名守「窄先于宽」(`custom-download` 的 codeload.github.com 先于 github.com 宽规则;google 子域在 `custom-direct`,google.com 宽走 Loyalsoldier google 兜底);`custom-proxy` 仅 developer.apple.com、`custom-direct` 含 apple.com 宽直连,装配 proxy 先于 direct 即保证该代理特例先命中;AND 复合与 GEOSITE cn 无法列表化,留在装配行;⚠️ 规则文件必须 payload: 包装(纯文本逐行会按默认 yaml 解析成 0 条规则,2026-09-03 踩坑,曾误加 format:text 后统一 payload 格式),条目须 `+.` 前缀表达后缀(裸=精确,踩坑详见 docs/memory.md)
+- SG WS 节点:Bearer 鉴权、Cookie/HeaderField 会话亲和均已实测,细节见 docs/memory.md
+- 客户端模板 rules 采用 Loyalsoldier/clash-rules 全量 13 个 rule-providers(jsdelivr CDN 每日 6:30 自动构建;reject REJECT、apple/icloud/direct/private/lancidr/cncidr DIRECT、google/proxy/gfw/tld-not-cn/telegramcidr Proxy,结尾 MATCH,DIRECT 黑名单兜底);7 条国外遥测 REJECT 与 MSN/Bing/系统打点/Apple 证书 CA 直连等保留为顶部覆盖层(国内遥测走 `GEOSITE,cn,DIRECT` 不加规则),外网下载域名(release-assets/objects/codeload.github.com、raw.githubusercontent.com、dl.google.com、download.jetbrains.com)走 Proxy-Download——细节见 `docs/memory.md`
+- 试验/踩坑细节(WS 实验、全量 WS 切换、Bearer/会话亲和实验、tcpFastOpen、遥测 REJECT 依据)归档于 `docs/memory.md`,本文件仅保留现状事实与约定
+- 客户端自定义覆盖层规则与模板解耦:内容为 4 个规则文件 `client-config/custom-{reject,direct,download,proxy}.txt`(**payload: YAML 列表**,行为 domain,与 Loyalsoldier 同构;纯数据,**不含策略名**,任意配置按自己策略绑定;**条目语义:`+.域名`=后缀匹配(含子域,对应 DOMAIN-SUFFIX),裸域名=仅精确——本组条目统一 `+.` 前缀**);策略绑定与顺序在模板 rules 顶部「自定义覆盖层装配」块(顺序契约:AND-REJECT > `custom-reject`(REJECT)> `custom-proxy`(Proxy)> `custom-direct`(DIRECT)> `custom-download`(Proxy-Download)> GEOSITE cn),各列表经 `rule-providers.custom-*`(type http,url=jsdelivr `https://cdn.jsdelivr.net/gh/fangzy/voynix@main/client-config/custom-*.txt`,behavior domain,interval 86400,format 默认 yaml)拉取;改规则 = 编辑对应 txt → git push → 重跑 gen(自动 purge jsdelivr 缓存,`GEN_SKIP_PURGE=1` 可跳过)→ 客户端 reload/周期刷新生效。⚠️ 依赖仓库公开(jsdelivr 只服务 public);provider 拉取失败时对应组规则**静默缺失**(本地校验可用 file provider 兜底验证,详见 docs/memory.md 2026-09-03 节)。要点:同列表内顺序无意义,跨列表顺序靠装配行——新增域名守「窄先于宽」(`custom-download` 的 codeload.github.com 先于 github.com 宽规则;google 子域在 `custom-direct`,google.com 宽走 Loyalsoldier google 兜底);`custom-proxy` 仅 developer.apple.com、`custom-direct` 含 apple.com 宽直连,装配 proxy 先于 direct 即保证该代理特例先命中;AND 复合与 GEOSITE cn 无法列表化,留在装配行;⚠️ 规则文件必须 payload: 包装(纯文本逐行会按默认 yaml 解析成 0 条规则),条目须 `+.` 前缀表达后缀(裸=精确,踩坑详见 docs/memory.md)
 - 客户端 Verge 本机使用细节(混合端口 7897 由 Verge 自身设置覆盖、unix socket API、更新流程)见 `docs/memory.md` 2026-09-01 节
 - 更多踩坑(FC 保留 FC_ 前缀 env、Xray 移除 allowInsecure、/bin/sh 多字节变量名、ACR 个人版未开通)见 `docs/memory.md` 2026-09-01 节
 
 ## 维护规则
 
-本文件是项目事实基准,供 AI 代理与协作者使用。当以下任一发生变化时,**必须在同一次改动中同步更新本文件**:
+本文件是项目事实基准,供 AI 代理与协作者使用。**只记录现状与结论,不写更新日志/变更过程与日期**(试验、踩坑与变更细节统一归档 `docs/memory.md`)。当以下任一发生变化时,**必须在同一次改动中同步更新本文件**:
 - 项目结构(顶层目录/关键文件增删移)
 - 构建、测试、校验命令(如 `mihomo -t`、`gen-client-config.sh`、`deploy-fc.sh` 用法)
 - 架构边界(传输协议、端口、鉴权方式、节点清单)
