@@ -64,6 +64,17 @@ IMAGE_NAME="${IMAGE_NAME:-voynix-xray}"
 # 客户端显示名前缀:取 IMAGE_NAME 首段并首字母大写(voynix-xray → Voynix)
 CLIENT_PREFIX=$(echo "$IMAGE_NAME" | cut -d- -f1 | awk '{ print toupper(substr($0,1,1)) substr($0,2) }')
 
+# 节点短码别名:RELAY_ENTRIES 入口可写短码(解析为真实节点 key;新增别名在此扩展,与 deploy-fc.sh 保持一致)
+resolve_node_key() {
+  case "$1" in
+    bj) echo "beijing" ;;
+    hz) echo "hangzhou" ;;
+    sh) echo "shanghai" ;;
+    sz) echo "shenzhen" ;;
+    *)  echo "$1" ;;
+  esac
+}
+
 # ---------- 确定要生成的节点 ----------
 # 优先级:命令行参数 > FC_NODES 环境变量 > 全部节点(s.yaml)
 # FC_NODES 与 CI 语义一致:逗号分隔节点键,如 sg,hk,tokyo;设置为空/纯空白 → 显式报错
@@ -87,9 +98,23 @@ print(' '.join(k.replace('voynix-','') for k in d['resources']))
 ")
 fi
 
+# 中继入口自动并入生成范围(与部署语义一致:FC_NODES/默认 ∪ RELAY_ENTRIES 入口;
+# 否则入口不在 FC_NODES 时会整条路由跳过——如 sz>sg 而 FC_NODES 无 shenzhen 时只有 sh-hk)
+# 显式命令行参数时保持精确,不自动并入(与 deploy-fc.sh 单节点 TARGET 语义一致)
+if [ $# -eq 0 ] && [ -n "${RELAY_ENTRIES:-}" ]; then
+  for route in $(echo "$RELAY_ENTRIES" | tr ';' ' '); do
+    chain="${route#*=}"   # 兼容旧格式 name=入口>出口
+    entry_key=$(resolve_node_key "$(echo "$chain" | cut -d'>' -f1)")
+    [ -n "$entry_key" ] || continue
+    case " $NODES " in
+      *" $entry_key "*) ;;
+      *) NODES="$NODES $entry_key"; echo "[gen-client-config] 中继入口 $entry_key 自动加入生成范围(RELAY_ENTRIES 声明)" ;;
+    esac
+  done
+fi
+
 echo "[gen-client-config] 目标节点: $NODES"
 echo "[gen-client-config] 逐个获取 FC 域名(aliyun fc GetTrigger)..."
-echo ""
 
 # ---------- 逐节点获取域名 ----------
 # 格式: "key|region|functionName|host"
@@ -217,17 +242,6 @@ if [ -n "${SCENE_NODES:-}" ]; then
   done
   # Voynix-Scene 组延后到 relay 段后统一生成(需条件性把 Voynix-Relay 加入可选成员)
 fi
-
-# 节点短码别名:RELAY_ENTRIES 入口可写短码(解析为真实节点 key;新增别名在此扩展,与 deploy-fc.sh 保持一致)
-resolve_node_key() {
-  case "$1" in
-    bj) echo "beijing" ;;
-    hz) echo "hangzhou" ;;
-    sh) echo "shanghai" ;;
-    sz) echo "shenzhen" ;;
-    *)  echo "$1" ;;
-  esac
-}
 
 # 中继节点生成(与部署共用 RELAY_ENTRIES 单字段:入口短码>出口短码,分号分隔;节点名自动=入口-出口,如 sh>hk → Voynix-sh-hk)
 # 兼容旧格式 name=入口>出口(显式节点名);中继节点 = 客户端只连入口节点,链路在服务端完成(入口以中转模式部署)

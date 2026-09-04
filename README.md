@@ -386,6 +386,15 @@ docker pull <user>/voynix-xray:latest
 
 可写在 `.env.deploy` 或作为 shell 环境变量传入,作用于 `deploy-fc.sh`(部署范围)与 `gen-client-config.sh`(生成范围),与 CI 的 `FC_NODES` 仓库变量语义一致。
 
+### 中转与场景参数(RELAY_ENTRIES / SCENE_NODES)
+
+| 变量 | 必需 | 说明 |
+|------|------|------|
+| `RELAY_ENTRIES` | 含中转入口时必需 | 中转入口配置,格式 `入口短码>出口短码`,分号分隔多条;**示例:`sh>hk;sz>sg`**(shanghai→hk、shenzhen→sg);出口 fcapp.run 域名与 CN 镜像 digest 部署时自动查询,无需手填;同时驱动 `deploy-fc.sh`(部署入口节点)与 `gen-client-config.sh`(生成 `Voynix-sh-hk` 等中继节点进 `Voynix-Relay`) |
+| `SCENE_NODES` | 否 | 客户端场景组,格式 `场景名=节点1,节点2`,分号分隔多组;**示例:`company=sg,tokyo;home=hk,tokyo`**;`gen-client-config.sh` 为每组生成一个 url-test 组(`Voynix-Company`/`Voynix-Home`,15 分钟测速自动选优),`Voynix-Scene` 一键切换 |
+
+两变量均写于 `.env.deploy`(与部署共用 `RELAY_ENTRIES` 单字段);GitHub Actions 侧仅 `RELAY_ENTRIES` 在 Variables 页签配置(`SCENE_NODES` 只作用于客户端配置生成,CI 不使用)。
+
 ### 镜像/函数名前缀(IMAGE_NAME)
 
 | 变量 | 必需 | 默认值 | 说明 |

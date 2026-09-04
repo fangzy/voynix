@@ -49,7 +49,7 @@ Xray-core Docker proxy service using VLESS + WebSocket + TLS,HTTP 触发器 Bear
 | Client configuration | `client-config/clash-verge.yaml.template` | mihomo/Clash template (dual-node, url-test;rules 用 Loyalsoldier 13 规则集,MATCH,DIRECT) |
 | Edit client custom rules | `client-config/custom-{reject,direct,download,proxy}.txt` | 自定义覆盖层规则文件(payload: YAML 列表,不含策略名;与 Loyalsoldier 同构);策略绑定与顺序在模板 rules 装配块(`RULE-SET,custom-*`),jsdelivr 拉取,push 即生效 |
 | FC deployment config | `fc/s.yaml` | Serverless Devs, regions + images per node;shanghai/shenzhen=中转入口(RELAY_ENTRIES 声明,镜像 digest 自动查询) |
-| Generate client config | `scripts/gen-client-config.sh` | Auto-fetch FC node domains (aliyun fc GetTrigger); filter via args or `FC_NODES`; `RELAY_ENTRIES` 生成中继节点;生成后自动 purge jsdelivr 规则文件缓存(`GEN_SKIP_PURGE=1` 跳过) |
+| Generate client config | `scripts/gen-client-config.sh` | Auto-fetch FC node domains (aliyun fc GetTrigger); filter via args or `FC_NODES`; `RELAY_ENTRIES` 生成中继节点(无显式参数时入口自动并入生成范围);生成后自动 purge jsdelivr 规则文件缓存(`GEN_SKIP_PURGE=1` 跳过) |
 | Local FC deploy | `scripts/deploy-fc.sh` | Reads 根目录 .env;`RELAY_ENTRIES`(入口短码>出口短码,单字段)声明的中转入口自动查出口域名并逐个注入 |
 | Runtime entrypoint | `docker-image/entrypoint.sh` | envsubst + Xray start;`RELAY_EXIT_HOST` 非空→relay 模板,否则直连模板 |
 | Health check | `docker-image/healthcheck.sh` | Docker HEALTHCHECK script (pidof xray) |
@@ -196,7 +196,7 @@ Internet               Internet               Internet
 
 ## NODES
 
-All nodes use Docker Hub public image `docker.io/<user>/voynix-xray`; deployment scope is controlled by the `FC_NODES` repo variable (comma-separated, e.g. `sg,hk,tokyo`). **RELAY_ENTRIES 声明的中转入口自动并入部署集合(FC_NODES ∪ 入口,CI 与 deploy-fc.sh 一致),无需再手动把入口加进 FC_NODES**(显式单节点部署参数除外,保持精确)。Empty/空白/未设置 → CI 显式报错; unknown keys also fail fast(入口键同样校验,CI 查 s.yaml、本地查 VALID_KEYS)。`fc/s.yaml` defines 12 nodes (6 overseas + 6 CN, YAML anchor `&node-base` for shared props). Only FC 3.0 regions supporting custom-container images are listed (Seoul/KL/Jakarta/Bangkok/London/Qingdao/Wulanchabu/Chengdu excluded). **已部署:sg / hk / tokyo(直连出口)/ shanghai(中转入口→hk)/ shenzhen(中转入口→sg)**;CI repo 变量 FC_NODES 为 sg,hk,tokyo(中转入口由 RELAY_ENTRIES 声明自动并入,本地 .env 同)。
+All nodes use Docker Hub public image `docker.io/<user>/voynix-xray`; deployment scope is controlled by the `FC_NODES` repo variable (comma-separated, e.g. `sg,hk,tokyo`). **RELAY_ENTRIES 声明的中转入口自动并入部署集合(FC_NODES ∪ 入口,CI、deploy-fc.sh 与 gen-client-config.sh 无显式参数时均一致),无需再手动把入口加进 FC_NODES**(显式单节点部署参数除外,保持精确)。Empty/空白/未设置 → CI 显式报错; unknown keys also fail fast(入口键同样校验,CI 查 s.yaml、本地查 VALID_KEYS)。`fc/s.yaml` defines 12 nodes (6 overseas + 6 CN, YAML anchor `&node-base` for shared props). Only FC 3.0 regions supporting custom-container images are listed (Seoul/KL/Jakarta/Bangkok/London/Qingdao/Wulanchabu/Chengdu excluded). **已部署:sg / hk / tokyo(直连出口)/ shanghai(中转入口→hk)/ shenzhen(中转入口→sg)**;CI repo 变量 FC_NODES 为 sg,hk,tokyo(中转入口由 RELAY_ENTRIES 声明自动并入,本地 .env 同)。
 
 | Key | Region | Function | Client host (fcapp.run:443 WSS) |
 |-----|--------|----------|------------------------------|

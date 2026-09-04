@@ -4,30 +4,9 @@
 
 ## 实测经验（2026-08）
 
-### 节点信息
+### 节点历史
 
-12 个节点（6 海外 + 6 国内，均使用 Docker Hub 公共镜像 `docker.io/<user>/voynix-xray`）。已实测新加坡/香港，其余由 `FC_NODES` 部署后生效：
-
-| 节点键 | 地域 | 函数名 | 客户端地址 |
-|--------|------|--------|-----------|
-| `sg` | ap-southeast-1 | `voynix-xray-sg` | `voynix-xray-sg-xxx.ap-southeast-1.fcapp.run:443` |
-| `hk` | cn-hongkong | `voynix-xray-hk` | `voynix-xray-hk-xxx.cn-hongkong.fcapp.run:443` |
-| `tokyo` | ap-northeast-1 | `voynix-xray-tokyo` | `voynix-xray-tokyo-xxx.ap-northeast-1.fcapp.run:443` |
-| `frankfurt` | eu-central-1 | `voynix-xray-frankfurt` | `voynix-xray-frankfurt-xxx.eu-central-1.fcapp.run:443` |
-| `va` | us-east-1 | `voynix-xray-va` | `voynix-xray-va-xxx.us-east-1.fcapp.run:443` |
-| `sv` | us-west-1 | `voynix-xray-sv` | `voynix-xray-sv-xxx.us-west-1.fcapp.run:443` |
-| `hangzhou` | cn-hangzhou | `voynix-xray-hangzhou` | `voynix-xray-hangzhou-xxx.cn-hangzhou.fcapp.run:443` |
-| `shanghai` | cn-shanghai | `voynix-xray-shanghai` | `voynix-xray-shanghai-xxx.cn-shanghai.fcapp.run:443` |
-| `beijing` | cn-beijing | `voynix-xray-beijing` | `voynix-xray-beijing-xxx.cn-beijing.fcapp.run:443` |
-| `zhangjiakou` | cn-zhangjiakou | `voynix-xray-zhangjiakou` | `voynix-xray-zhangjiakou-xxx.cn-zhangjiakou.fcapp.run:443` |
-| `huhehaote` | cn-huhehaote | `voynix-xray-huhehaote` | `voynix-xray-huhehaote-xxx.cn-huhehaote.fcapp.run:443` |
-| `shenzhen` | cn-shenzhen | `voynix-xray-shenzhen` | `voynix-xray-shenzhen-xxx.cn-shenzhen.fcapp.run:443` |
-
-镜像内不含 UUID 等机密，运行时经环境变量注入（仓库必须设为 Public）。旧新加坡函数 `proxy_service$xray-exit`（ACR 镜像）已于 2026-08 删除，由 `voynix-xray-sg` 接管。
-
-### 地域支持范围
-
-仅列出支持自定义容器镜像的 FC 3.0 地域（2026-08 依据阿里云官方 supported-regions 图标实测核对）。以下地域**不支持**自定义容器镜像，已排除：首尔（ap-northeast-2）/吉隆坡（ap-southeast-3）/雅加达（ap-southeast-5）/曼谷（ap-southeast-7）/伦敦（eu-west-1）/利雅得（me-central-1）/青岛（cn-qingdao）/乌兰察布（cn-wulanchabu）/成都（cn-chengdu）。
+旧新加坡函数 `proxy_service$xray-exit`（ACR 镜像）已于 2026-08 删除，由 `voynix-xray-sg` 接管。
 
 ### 镜像推送（Docker Hub）
 
@@ -50,17 +29,6 @@ FC WS 入口端口为 443（WSS，FC 网关终止 TLS）。
 mihomo -f client-config/clash-verge.yaml
 curl -x http://127.0.0.1:7890 https://www.google.com   # 返回 204 即为通
 ```
-
-### 函数规格与弹性配置
-
-`fc/s.yaml` 所有节点统一（锚点复用）：
-
-| 配置项 | 值 | 字段 |
-|--------|-----|------|
-| CPU / 内存 | 0.1 vCPU / 128MB | `cpu` / `memorySize` |
-| 单实例并发 | 30 | `instanceConcurrency` |
-| 最小实例数 | 0（无请求不收费） | `scalingConfig.minInstances` |
-| 预留并发 | 15 | `concurrencyConfig.reservedConcurrency` |
 
 ### 实例数 vs 并发数（压测结论）
 
